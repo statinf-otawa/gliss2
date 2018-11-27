@@ -68,7 +68,7 @@ let string_map2 f s1 s2 =
 		failwith "shouldn't happen (bitmask.ml::string_map2)"
 	else
 		aux 0;
-	res
+	Bytes.to_string res
 
 
 let string_iter f s =
@@ -158,7 +158,7 @@ let string_rev s =
 		i - 1
 	in
 	ignore (string_fold_left aux (l - 1) s);
-	res
+	Bytes.to_string res
 
 
 
@@ -330,7 +330,7 @@ let masked_value m mask =
 	(*Printf.printf "masked_value, v=%s, vmask=%s, l=%d, lr=%d\n" v vmask l lr;
 	Printf.printf "masked_value, m= [%s](%d), mask= [%s](%d), res = [%s](%d)\n"
 	v (String.length v) vmask (String.length vmask) res (String.length res);*)
-	BITMASK(res)
+	BITMASK(Bytes.to_string res)
 
 
 (** returns m (representing a mask) with the mask "removed", if a bit is set in the mask it will be 0 in the result,
@@ -363,7 +363,7 @@ let unmask m mask =
 	aux 0;
 	(*!!DEBUG!!*)
 	(*Printf.printf "unmask, m= [%s](%d), mask= [%s](%d), res= [%s](%d)\n" v lv vm (String.length vm) (res^v_suffix) (String.length (res^v_suffix));*)
-	BITMASK(res ^ v_suffix)
+	BITMASK((Bytes.to_string res) ^ v_suffix)
 
 
 (** simple equality between 2 masks
@@ -593,7 +593,7 @@ let get_mask sp =
 					aux s (pos+1) accu
 				end
 		in
-		aux s 0 (String.make n '1')
+		aux s 0 (Bytes.of_string (String.make n '1'))
 	in
 	let rec get_mask_from_regexp_list l =
 		match l with
@@ -602,7 +602,7 @@ let get_mask sp =
 			(match h with
 			| Str.Text(txt) ->
 				(* here we assume that an image contains only %.. , 01, X or x *)
-				(transform_str txt) ^ (get_mask_from_regexp_list t)
+				(Bytes.to_string (transform_str txt)) ^ (get_mask_from_regexp_list t)
 			| Str.Delim(d) ->
 				(String.make (get_length_from_format d) '0') ^ (get_mask_from_regexp_list t)
 			)
