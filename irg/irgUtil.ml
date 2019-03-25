@@ -20,6 +20,7 @@
  *)
 
 open Irg
+open Printf
 
 (**	Run nmp2nml on the given file.
 	@param file	File to run on.
@@ -206,9 +207,22 @@ let load_with_error_support path =
 		exit 2		
 	| Lexer.BadChar chr ->
 		Lexer.display_error (Printf.sprintf "bad character '%c'" chr); exit 2
+	| Sys_error m ->
+		Printf.fprintf stderr "ERROR: input/output error: %s\n" m;
+		exit 3
+
+
+(** Parse a definition and record it. *)
+let parse_def s =
+	try
+		let i = String.index s '=' in
+		Irg.add_arg_def (String.sub s 0 i) (String.sub s (i+1) ((String.length s) - i - 1))
+	with Not_found ->
+		raise (Arg.Bad (sprintf "bad syntax in -D definition %s" s))
 
 
 (** Set of always defined options. *)
 let options = [
-	("-compat", Arg.Unit (fun _ -> Irg.set_compat true), "Enabled compatibility mode with old SimNML files")
+	("-compat", Arg.Unit (fun _ -> Irg.set_compat true), "Enabled compatibility mode with old SimNML files");
+	("-D", Arg.String parse_def, "Add a definition ID=value used as a constant in the IRG file.")
 ]

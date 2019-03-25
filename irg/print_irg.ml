@@ -23,7 +23,7 @@
 (* argument list *)
 let input = ref ""
 let insts = ref false
-let options = [ ("-i", Arg.Set insts, "display list of generated instructions") ]
+let options = ("-i", Arg.Set insts, "display list of generated instructions")::IrgUtil.options
 
 (* argument decoding *)
 let free_arg arg =

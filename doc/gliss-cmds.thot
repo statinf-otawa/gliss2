@@ -10,6 +10,8 @@ This commands converts its input //FILE//, ''.nmp'' or ''.nml'' files,
 to //IRG_FILE// file, that is, to intermediate representation.
 
 Options includes only:
+  * ''-compat'' -- enable support of old-style NMP files
+  * ''-D'' //ID//''=''//VALUE'' -- override the constant in NMP/NML file
   * ''-help'', ''--help'' -- display help information
 
 
@@ -24,6 +26,7 @@ Display in a textual form, as scanned by @(GLISS), its input FILE
 that may be ''.nmp'', ''.nml'' or ''.irg''.
 
 Options are:
+  * ''-D'' //ID//''=''//VALUE// -- override the constant in NMP/NML file
   * ''-help'', ''--help'' -- display help information
   * ''-i'' -- display operations wholy unfolded, that is, with
     parameters evaluated

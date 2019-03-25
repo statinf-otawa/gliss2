@@ -9,6 +9,9 @@ test/.*\.log
 test/src
 test/noiset/src
 test/noiset/include
+test/out
+.*/maat
+.*/\.maat
 .*\.dep
 gep/gep
 gep/gliss-attr
