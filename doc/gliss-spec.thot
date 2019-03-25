@@ -423,3 +423,21 @@ instantiation order depends on the relative values of //l// and //u//.
 as deprecated.**
 
  
+===== Let Specification =====
+
+The ''let'' specification supports 2 extensions:
+
+<code>
+	LetSpecification ::= 'let' ID ':' Type '=' ConstExpression
+</code>
+This first form accepts the explicit specification of a type (the type
+is not only derived from the constant expression).
+
+<code>
+	LetSpecification ::= 'let' '*' ID ...
+</code>
+The second form accepts that a constant definition can be overriden
+by argument passing in command line. If there is no command line definition,
+the value of the constant is the one passed in the NML file. If there
+is a command line argument of the forme ''-D'' //ID//''=''//VALUE//,
+the constant value will be the passed one.

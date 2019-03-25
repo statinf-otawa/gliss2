@@ -274,19 +274,25 @@ in the SimNML file.
 
 <code>
 LetSpecification ::=
-	'let' Identifier '=' ConstantExpression
-|	'let' Identifier ':' Type '=' ConstantExpression
+	'let' '*'? Identifier '=' ConstantExpression
+|	'let' '*'? Identifier ':' Type '=' ConstantExpression
 </code>
 
-**Second form is a GLISS extension only!**
-
-The ''ConstantExpression'' is an expression that must evaluates to a constant
+**GLISS EXTENSION (a)** The ''ConstantExpression'' is an expression that must evaluates to a constant
 at generation time: it contains either literal constant values or constant
 identifiers.
 
 The type of the constant is either derived from the type of the expression
 (first form) or from the specified type (second form).
 
+**GLISS EXTENSION (b)** The optional '*' allows to declare that a constant
+can be override by the command line. If an argument of the form
+//Identifier//''=''//value// is passed to any @(GLISS) command parsing
+a SimNML file, the actual value of the constant will be th given one.
+Otherwise the value passed in the ''LetSpecification'' is used.
+
+Notice that this option is restricted only to some types: string,
+card, int or float.
 
 
 ====== Registers and Memories ======

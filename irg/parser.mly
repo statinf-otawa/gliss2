@@ -234,8 +234,15 @@ MachineSpec :
 
 
 LetDef	:
-	LET LocatedID EQ LetExpr			{  (fst $2, Sem.make_let $2 Irg.NO_TYPE $4) }
-|	LET LocatedID COLON Type EQ LetExpr	{  (fst $2, Sem.make_let $2 $4 $6) }
+	LET OptStar LocatedID EQ LetExpr			{  (fst $3, Sem.make_let $3 Irg.NO_TYPE $5 $2) }
+|	LET OptStar LocatedID COLON Type EQ LetExpr	{  (fst $3, Sem.make_let $3 $5 $7 $2) }
+;
+
+OptStar :
+	/* empty */
+		{ false }
+|	STAR
+		{ true }
 ;
 
 ResourceSpec:
