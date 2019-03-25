@@ -1983,4 +1983,22 @@ let clean_local _ =
 	local_list := []
 
 
+(** List of definitions passed by argument. *)
+let arg_defs: (string * string) list ref = ref []
 
+
+(** Record a new a new argument definition.
+	@param s	String of the form ID=value.
+	@param va	Value of the definition. *)
+let add_arg_def id va =
+	arg_defs := (id, va)::!arg_defs
+
+
+(** Get the value associated with a definition identifier, if any.
+	@param id	Definition identifier.
+	@return		Some value or None. *)
+let get_arg_def id =
+	try
+		Some (List.assoc id !arg_defs)
+	with Not_found ->
+		None

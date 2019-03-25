@@ -1,27 +1,8 @@
-TESTS = \
-	image_param \
-	double_param \
-	bad_named_param
-
 all: test
 
-test: irg log $(TESTS)
-
-out/irg:
-	mkdir $@
-
-log:
-	mkdir $@
-
-out:
-	mkdir $@
-
-clean:
-	rm -rf log out include src
-
+# test_failed macro
 define test_failed
-TEST=coucou
-
+TESTS := $(TESTS) $(1)
 $(1): log
 	@echo -n "$(1) ... "; \
 	if $(2) > log/$(1).log 2>&1 ; then \
@@ -31,11 +12,12 @@ $(1): log
 	fi
 endef
 
+# test_success macro
 define test_success
+TESTS := $(TESTS) $(1)
 $(1): log out
-	for x in `ls`; do echo "$${x}"; done; \
-	echo -n "$(1) ... "; \
-	if [ -n "$(3)" ]; then \
+	@echo -n "$(1) ... "; \
+	@if [ -n "$(3)" ]; then \
 		rm -rf "out/$(1)"; \
 		mkdir -p "out/$(1)"; \
 		cd "out/$(1)"; \
@@ -45,7 +27,6 @@ $(1): log out
 	else \
 		l="log/$(1).log"; \
 	fi; \
-	l="ok"; \
 	echo "l=$$l"; \
 	echo $(2); \
 	if $(2) > "$$l" 2>&1 ; then \
@@ -55,8 +36,29 @@ $(1): log out
 	fi
 endef
 
+
+# tests
+IRG=../irg
+PRINT_IRG=$(IRG)/print_irg
+
 $(eval $(call test_failed,image_param,../irg/mkirg image_param.nml irg/image_param.irg))
 $(eval $(call test_failed,double_param,../irg/mkirg double_param.nml irg/double_param.irg))
 $(eval $(call test_failed,bad_named_param,../irg/mkirg bad_named_param.nml irg/bad_named_param.irg))
 $(eval $(call test_success,for,../../../irg/mkirg ../for.nmp for.irg,for))
+
+
+# goals
+test: out/irg log $(TESTS)
+
+out/irg:
+	mkdir -p $@
+
+log:
+	mkdir $@
+
+out:
+	mkdir $@
+
+clean:
+	rm -rf log out include src
 

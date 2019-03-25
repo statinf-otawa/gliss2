@@ -1942,16 +1942,54 @@ let make_ref id =
 	if e = NONE then REF (t, id) else e
 
 
+(** Decode a string according to the given type and corresponding constant.
+	@param s	String to decode.
+	@param t	Expected type for value.
+	@return		Corresponding constant.
+	@raise PreError in case of error. *)
+let decode_string_constant s t =
+	match t with
+	| Irg.NO_TYPE
+	| Irg.STRING ->
+		Irg.STRING_CONST s
+	| Irg.CARD n
+	| Irg.INT n when n <= 32 ->
+		(try
+			Irg.CARD_CONST (Int32.of_string s)
+		with Failure _ ->
+			error (output [PTEXT "bad format for int/card value: "; PTEXT s]))
+	| Irg.CARD n
+	| Irg.INT n when n <= 64 ->
+		(try
+			Irg.CARD_CONST_64 (Int64.of_string s)
+		with Failure _ ->
+			error (output [PTEXT "bad format for int/card value "; PTEXT s]))
+	| _ ->
+		error (output [PTEXT "cannot decode type "; PTYPE t])
+
+
 (** Build a let specification.
 	@param id			Let identifier.
 	@param line			Line information.
 	@param t			Type of the let (possibly NO_TYPE)
 	@param e			Expression of the constant.
+	@param s			True to denote a constant that may passzd by command line.
 	@return				Built specification.
 	@raise PreError		If there is a typing error or something is not computable. *)
-let make_let (id, line) t e =
-	let t = if t = NO_TYPE then get_type_expr e else t in
-	Irg.LET (id, t, eval_const e, set_line_info [] line)
+let rec make_let (id, line) t e s =
+	if s then
+		let t = if t = NO_TYPE then STRING else t in
+		let e = match Irg.get_arg_def id with
+			| None   -> e
+			| Some v ->
+				try
+					Irg.CONST (t, decode_string_constant v t)
+				with PreError m ->
+					error (fun out -> fprintf out "error in definition of %s: " id; m out) in
+		make_let (id, line) t e false
+	else
+		let t = if t = NO_TYPE then get_type_expr e else t in
+		Irg.LET (id, t, eval_const e, set_line_info [] line)
 
 
 (** Check type of expression after instruction instanciation.
