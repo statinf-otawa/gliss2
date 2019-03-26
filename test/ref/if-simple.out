@@ -1,0 +1,33 @@
+let bit_order = "uppermost"	gliss-line-info = if-simple.nml:2
+
+let proc = "test"	gliss-line-info = if-simple.nml:1
+
+param __IADDR (card(32))
+op instruction (x : all)
+	action = {
+		x.action;
+	}
+	image = x.image
+	syntax = x.syntax
+	gliss-line-info = if-simple.nml:9
+
+let gliss_isize = "8"	gliss-line-info = if-simple.nml:3
+
+op all = i	gliss-line-info = if-simple.nml:14
+
+let N = 0L	gliss-line-info = if-simple.nml:4
+
+op i ()
+	action = {
+		 <NOP>;
+	}
+	syntax = const(string, "i")
+	image = const(string, "0000 0001")
+	gliss-line-info = if-simple.nml:22
+
+param __ISIZE (card(32))
+mem M [32, card(8)] 	gliss-line-info = if-simple.nml:7
+
+reg PC [1, card(32)] 	pc = const(card(32), 1L)
+ 	gliss-line-info = if-simple.nml:6
+

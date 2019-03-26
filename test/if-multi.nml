@@ -1,0 +1,41 @@
+let proc = "test"
+let bit_order = "uppermost"
+let gliss_isize = "8"
+let* N: int(8) = 0
+let* K: int(8) = 0
+
+reg PC[1, card(32)] pc = 1
+mem M[32, card(8)]
+
+op instruction(x: all)
+  syntax = x.syntax
+  image = x.image
+  action = { x.action ; }
+  
+op all = i
+
+if N then
+	if K then
+		op i()
+			image = "0000 0000"
+			syntax = "i"
+			action = { }
+	else
+		op i()
+			image = "0000 0001"
+			syntax = "i"
+			action = { }
+	endif
+else
+	if K then
+		op i()
+			image = "0000 0010"
+			syntax = "i"
+			action = { }
+	else
+		op i()
+			image = "0000 0011"
+			syntax = "i"
+			action = { }
+	endif
+endif

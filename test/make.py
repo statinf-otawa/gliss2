@@ -13,6 +13,14 @@ GLISS_ATTR = "../gep/gliss-attr"
 
 out = directory("out")
 
+# useful function
+def print_irg(nml, opts = ""):
+	return "%s %s %s" % (PRINT_IRG, nml, opts)
+
+def output(case, name, cmd):
+	test.output(case, name, cmd, out="out/%s.out" % name, out_ref="ref/%s.out" % name)
+
+
 # simple test case
 simple = test.case("simple", deps = out)
 
@@ -62,4 +70,15 @@ tests = [
 for (t, a) in tests:
 	test.output(defarg, "%s-test" % t, "%s %s.nml %s" % (PRINT_IRG, t, a),
 		out = "out/%s.out", out_ref = "ref/%s.out" % t)
+
+
+# top-if test
+top_if = test.case("topif-test")
+output(top_if, "if-simple", print_irg("if-simple.nml", ""))
+output(top_if, "if-simple2", print_irg("if-simple.nml", "-D N=1"))
+test.failing_command(top_if, "if-dyn", print_irg("if-dyn.nml"))
+output(top_if, "if-multi00", print_irg("if-multi.nml", "-D N=0 -D K=0"))
+output(top_if, "if-multi01", print_irg("if-multi.nml", "-D N=0 -D K=1"))
+output(top_if, "if-multi10", print_irg("if-multi.nml", "-D N=1 -D K=0"))
+output(top_if, "if-multi11", print_irg("if-multi.nml", "-D N=1 -D K=1"))
 

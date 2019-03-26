@@ -305,3 +305,47 @@ and scan_file = parse
 |	"\""		{ file := (str "" lexbuf) }
 |	_			{ raise BadLine }
 
+
+{
+
+(** Consume tokens until finding a top-level else or endif.
+	@param	f	Function to call in case of error.
+	@return		True if an endif is found, false if an else is found. *)
+let consume_then f =
+	let rec consume n =
+		match main !lexbuf with
+		| IF ->
+			consume (n + 1)
+		| ENDIF when n = 0 ->
+			true
+		| ENDIF ->
+			consume (n - 1)
+		| ELSE when n = 0 ->
+			false
+		| EOF ->
+			f "End of file reached: unclosed if!"
+		| _ ->
+			consume n in
+	consume 0
+
+
+(** Consume tokens until finding a top-level endif.
+	@param f	Function to call if an error araises. *)
+let consume_else f =
+	let rec consume n =
+		match main !lexbuf with
+		| IF ->
+			consume (n + 1)
+		| ENDIF when n = 0 ->
+			()
+		| ENDIF ->
+			consume (n - 1)
+		| ELSE when n = 0 ->
+			f "Illegal 'else'."
+		| EOF ->
+			f "End of file reached: unclosed if!"
+		| _ ->
+			consume n in
+	consume 0
+
+}

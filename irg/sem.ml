@@ -59,7 +59,6 @@
 	- {!make_switch_expr}
 	- {!make_var}
 	- {!num_auto_coerce}
-	- {!to_bool}
 	- {!to_card}
 	- {!to_cond}
 
@@ -916,16 +915,6 @@ let get_compare bop e1 e2 =
 	let (t, e1, e2) = num_auto_coerce e1 e2 in
 	if t <> NO_TYPE then BINOP (BOOL, bop, e1, e2) else
 	error_two_operands (string_of_binop bop) e1 e2
-
-
-(** Convert an expression to boolean.
-	@param e	Expression to convert.
-	@return		Converted expression. *)
-let to_bool e =
-	match get_type_expr e with
-	| ANY_TYPE
-	| BOOL -> e
-	| _ -> COERCE(BOOL, e)
 
 
 (** Convert an expression to condition.

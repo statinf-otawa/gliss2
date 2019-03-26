@@ -104,6 +104,62 @@ let get_spec_extend x =
 	| _ ->
 		Irg.error (Irg.asis (Printf.sprintf "can not extend %s" x))
 
+
+(** Raise a syntax error with the given message.
+	@param m	Message of the syntax error. *)
+let syntax_error m =
+	raise (Irg.SyntaxError m)
+
+
+(** Raise illegal-keyword exception. *)
+let illegal _ =
+	syntax_error "illegal keyword here"
+
+
+(** Automaton to handle top-level if. *)
+type top_if_auto = IN_THEN | IN_ELSE
+
+
+(** Stack of top-level if automaton to manage  top-level ifs. *)
+let top_if_stack: top_if_auto list ref = ref []
+
+
+(** Manage a top-if: evaluate the condition and drive the parsing
+	according to the result.
+	@param e	If condition. *)
+let top_if e =
+	try
+		if Sem.is_true (Sem.eval_const e) then
+			top_if_stack := IN_THEN :: !top_if_stack
+		else
+			if Lexer.consume_then syntax_error
+			then ()
+			else top_if_stack := IN_ELSE :: !top_if_stack
+	with Irg.Error _ ->
+		syntax_error "'if' expressions should evaluate to constant!"
+
+
+(** Manage a top-level else. *)
+let top_else _ =
+	match !top_if_stack with
+	| [] ->
+		syntax_error "'else' out of 'if'"
+	| IN_ELSE :: _ ->
+		syntax_error "duplicated 'else'"
+	| IN_THEN :: t	->
+		top_if_stack := t;
+		Lexer.consume_else syntax_error
+
+
+(** Manage a top-level endif. *)
+let top_endif _ =
+	match !top_if_stack with
+	| [] ->
+		syntax_error "'endif' out of 'if'"
+	| IN_THEN :: t
+	| IN_ELSE :: t ->
+		top_if_stack := t
+
 %}
 
 /* litterals */
@@ -219,19 +275,40 @@ specs :
 ;
 
 MachineSpec :
-    LetDef 		{ Irg.add_symbol (fst $1) (snd $1) }
-|   TypeSpec 		{ Sem.add_spec (fst $1) (snd $1) }
-|   MemorySpec		{ Sem.add_spec (fst $1) (snd $1) }
-|   RegisterSpec	{ (*Sem.add_spec (fst $1) (snd $1)*) }
-|   VarSpec			{ Sem.add_spec (fst $1) (snd $1) }
-|   ModeSpec		{ Sem.add_spec (fst $1) (snd $1); }
-|   OpSpec			{ Sem.add_spec (fst $1) (snd $1); }
-|   ResourceSpec	{ }
-|   ExceptionSpec	{ }
-|	ExtendSpec		{ }
-| 	CanonSpec		{ Irg.add_symbol (fst $1) (snd $1); Irg.add_canon (fst $1) (snd $1) }
-
-
+    LetDef
+		{ Irg.add_symbol (fst $1) (snd $1) }
+|   TypeSpec
+		{ Sem.add_spec (fst $1) (snd $1) }
+|   MemorySpec
+		{ Sem.add_spec (fst $1) (snd $1) }
+|   RegisterSpec
+		{ (*Sem.add_spec (fst $1) (snd $1)*) }
+|   ModeSpec
+		{ Sem.add_spec (fst $1) (snd $1); }
+|   OpSpec
+		{ Sem.add_spec (fst $1) (snd $1); }
+|   ResourceSpec
+		{ }
+|   ExceptionSpec
+		{ }
+|	ExtendSpec
+		{ }
+| 	CanonSpec
+		{ Irg.add_symbol (fst $1) (snd $1); Irg.add_canon (fst $1) (snd $1) }
+|	IF Expr THEN
+		{ top_if $2 }
+|	ELSE
+		{ top_else () }
+|	ENDIF
+		{ top_endif () }
+|	FOR error
+		{ illegal () }
+|	SWITCH error
+		{ illegal () }
+/* deprecated */
+|   VarSpec
+		{ Sem.add_spec (fst $1) (snd $1) }
+;
 
 LetDef	:
 	LET OptStar LocatedID EQ LetExpr			{  (fst $3, Sem.make_let $3 Irg.NO_TYPE $5 $2) }
