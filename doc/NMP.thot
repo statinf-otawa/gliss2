@@ -66,16 +66,17 @@ Identifier ::= [a-zA-Z_] [a-zA-Z_0-9]*
 Some identifier are reserved and known as keywords. They must **not*
 be used to name NMP elements. The list is given below in the array below:
 
-| _attr | action | alias | bool |
-| card | case | coerce | default |
-| else | endif | enum | error |
-| exception | false | fix | float |
-| format | if | image | initial |
-| int | let | macro | mode |
-| not | op | ports | reg |
-| resource | switch | syntax | then |
-| true | type | uses | var |
-| volatile |  |  |  |
+| _attr     | action | alias     | bool    |
+| card      | case   | coerce    | default |
+| do        | else   | enddo     | endif   |
+| enum      | error  | exception | false   |
+| fix       | float  | for       | format  |
+| if        | image  | in        |initial  |
+| int       | let    | macro     | mode    |
+| not       | op     | ports     | reg     |
+| resource  | switch | syntax    | then    |
+| true      | type   | uses      | var     |
+| volatile  |        |           |         |
 
 
 ===== Litteral Values =====
@@ -154,6 +155,47 @@ FIXME what's about "-" or "_" ?
 
 The given path given in the inclusion command may be absolute or relative
 to the current directory.
+
+===== Top-level Syntax =====
+
+Basically, a preprocessed ''.nmp'' file (also suffixed by ''.nml'') is
+a list of specifications: the order of the specifications matters.
+A type or a mode can only be used if it has been declared first.
+
+<code>
+TopLevel ::= Specification*
+</code>
+
+The specfications defines the different entities supported by NML:
+<code>
+Specification ::=
+	  TypeSpecification
+	| LetSpecification
+	| RegisterSpecification
+	| MemorySpecification
+	| OperationSpecification
+	| ModeSpecification
+	| TopLevelSelection
+</code>
+
+//TypeSpecification//, //LetSpecification//, //RegisterSpecification//,
+//MemorySpecification//, //OperationSpecification// and //ModeSpecification//
+are defined in the next sections.
+
+**GLISS2 EXTENSION** -- //TopLevelSelection// is a GLISS2 extension to provide condition declaration of specification:
+<code>
+TopLevelSelection ::=
+	  'if' Expression 'then' Specfication* 'endif'
+	| 'if' Expression 'then' Specification* 'else' Specification* 'endif'
+</code>
+
+The //Expression// must evaluates as constant using the symbols defined
+until this point (mainly ''let'' symbols). In the first form, if it
+evaluates to true, the ''then'' specification are included in the architecture
+description, otherwise they are ignored. In the second form, it the
+expression evaluates to true, the ''then'' specification are included
+in the architecture description, otherwise the ''else'' specification
+are included instead.
 
 
 ====== Types ======

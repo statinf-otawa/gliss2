@@ -439,5 +439,25 @@ is not only derived from the constant expression).
 The second form accepts that a constant definition can be overriden
 by argument passing in command line. If there is no command line definition,
 the value of the constant is the one passed in the NML file. If there
-is a command line argument of the forme ''-D'' //ID//''=''//VALUE//,
+is a command line argument of the forme ''-define'' //ID//''=''//VALUE//,
 the constant value will be the passed one.
+
+
+===== Top-level selection =====
+
+GLISS2 provides now the facility to perform conditional architecture
+description. To do so, ''if'' construction is supported at top-level
+with a condition that must evaluates to a constant at parsing time
+(mainly based on ''let'' constants, possibly redefined on command line).
+
+The syntax is the following:
+<code>
+...
+if EXPRESSION then
+	...
+[else
+	...
+endif]
+...
+</code>
+
