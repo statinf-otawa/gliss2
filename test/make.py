@@ -64,8 +64,8 @@ for (t, a) in tests:
 	test.failing_command(defarg, "%s-test" % t,  "%s %s.nml %s" % (PRINT_IRG, t, a), err = "out/%s.err" % t)
 tests = [
 	("arg-none", ""),
-	("arg-int", "-D N=1"),
-	("arg-str", "-D N=YYY")
+	("arg-int", "-define N=1"),
+	("arg-str", "-define N=YYY")
 ]
 for (t, a) in tests:
 	test.output(defarg, "%s-test" % t, "%s %s.nml %s" % (PRINT_IRG, t, a),
@@ -75,10 +75,10 @@ for (t, a) in tests:
 # top-if test
 top_if = test.case("topif-test")
 output(top_if, "if-simple", print_irg("if-simple.nml", ""))
-output(top_if, "if-simple2", print_irg("if-simple.nml", "-D N=1"))
+output(top_if, "if-simple2", print_irg("if-simple.nml", "-define N=1"))
 test.failing_command(top_if, "if-dyn", print_irg("if-dyn.nml"))
-output(top_if, "if-multi00", print_irg("if-multi.nml", "-D N=0 -D K=0"))
-output(top_if, "if-multi01", print_irg("if-multi.nml", "-D N=0 -D K=1"))
-output(top_if, "if-multi10", print_irg("if-multi.nml", "-D N=1 -D K=0"))
-output(top_if, "if-multi11", print_irg("if-multi.nml", "-D N=1 -D K=1"))
+output(top_if, "if-multi00", print_irg("if-multi.nml", "-define N=0 -define K=0"))
+output(top_if, "if-multi01", print_irg("if-multi.nml", "-define N=0 -define K=1"))
+output(top_if, "if-multi10", print_irg("if-multi.nml", "-define N=1 -define K=0"))
+output(top_if, "if-multi11", print_irg("if-multi.nml", "-define N=1 -define K=1"))
 

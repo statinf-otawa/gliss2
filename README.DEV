@@ -13,8 +13,20 @@ To launch the automatic tests, you will need a Python tool named Maat
 (https://github.com/hcasse/maat). To launch the tests,
 <code sh>
 cd test
-./make.py
+./make.py test
 </code>
+
+
+
+===== Testing before publication =====
+
+GLISS2 can be tested existing and known architecture using the script
+test/public.py (that requires also Maat):
+<code sh>
+cd test
+./public.py test
+</code>
+
 
 ===== Directory Organization =====
 

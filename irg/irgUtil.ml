@@ -224,5 +224,5 @@ let parse_def s =
 (** Set of always defined options. *)
 let options = [
 	("-compat", Arg.Unit (fun _ -> Irg.set_compat true), "Enabled compatibility mode with old SimNML files");
-	("-D", Arg.String parse_def, "Add a definition ID=value used as a constant in the IRG file.")
+	("-define", Arg.String parse_def, "Add a definition ID=value used as a constant in the IRG file.")
 ]
