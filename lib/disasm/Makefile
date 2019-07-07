@@ -1,14 +1,15 @@
 
 CFLAGS=-I../include -I../src -g -O3
 LIBADD += $$(shell bash ../src/$(proc)-config --libs)
+EXEC=$(proc)-disasm
 
-all: $(proc)-disasm
+all: $$(EXEC)
 
-$(proc)-disasm: $(proc)-disasm.o ../src/lib$(proc).a
+$$(EXEC): $(proc)-disasm.o ../src/lib$(proc).a
 	$$(CC) $$(CFLAGS) -o $$@ $$< $$(LIBADD)
 
 clean:
 	rm -rf $(proc)-disasm.o
 
 distclean: clean
-	rm -rf $(proc)-disasm
+	rm -rf $$(EXEC)
