@@ -22,8 +22,8 @@
 
 open Parser
 open Lexing
-exception BadChar of char
-exception BadLine
+(*exception BadChar of char
+exception BadLine*)
 
 (* Line count *)
 let file = ref ""
@@ -112,6 +112,17 @@ let _ =
 let get_col _ =
 	(Lexing.lexeme_start !lexbuf) - !line_offset + 1
 
+
+(** Raise an error with the given function message at the current
+	position in the lexing.
+	@param m	Function of the message. *)
+let error m =
+	let f, l, c = !file, !line, get_col () in
+	raise (Irg.Error (fun out ->
+		Printf.fprintf out "%s:%d:%d: " f l c;
+		m out))
+
+
 (** Output an error on the given stream with the current (file, line, column) position.
 	@param out	Output channel.
 	@param msg	Message to output. *)
@@ -175,6 +186,16 @@ let appends s c =
 let new_line lexbuf =
 	incr line;
 	line_offset := Lexing.lexeme_end lexbuf
+
+
+(** Raise an error at current position because a bad character is found. *)
+let bad_char c =
+	error (fun out -> Printf.fprintf out "unsupported character: '%c'" c)
+
+
+(** Raise an error at the current position because a #line is malformed. *)
+let bad_line _ =
+	error (Irg.asis "malformed #line")
 
 }
 
@@ -269,12 +290,13 @@ rule main = parse
 |	"@"		{ AROBAS }
 
 |	eof		{ EOF }
-|	_ as v		{ raise (BadChar v) }
+|	_ as v	{ bad_char v }
 
 (* eof_comment *)
 and eof_comment = parse
 	'\n'	{ new_line lexbuf; main lexbuf }
 |	_		{ eof_comment lexbuf }
+|	eof		{ eof_comment lexbuf }
 
 (* comment *)
 and comment = parse
@@ -282,12 +304,14 @@ and comment = parse
 
 |	'\n'	{ new_line lexbuf; comment lexbuf }
 |	_		{ comment lexbuf }
+|	eof		{ error (Irg.asis "end-of-file found inside a comment") }
 
 (* string recognition *)
 and str res = parse
 	"\""			{ res }
 |	"\\" (_	as v)	{ str (appends res v) lexbuf }
 |	_ as v			{ str (append res v) lexbuf }
+|	eof				{ error (Irg.asis "end-of-file found inside a string") }
 
 (* character recognition *)
 and chr res = parse
@@ -298,12 +322,14 @@ and chr res = parse
 and scan_line = parse
 	digit+ as l	{ line := (int_of_string l) - 1 }
 |	delim		{ scan_line lexbuf }
-|	_			{ raise BadLine }
+|	_			{ bad_line () }
+|	eof			{ bad_line () }
 
 and scan_file = parse
 	delim		{ scan_file lexbuf }
 |	"\""		{ file := (str "" lexbuf) }
-|	_			{ raise BadLine }
+|	_			{ bad_line () }
+|	eof			{ bad_line () }
 
 
 {

@@ -205,8 +205,6 @@ let load_with_error_support path =
 		f stderr;
 		output_char stderr '\n';
 		exit 2		
-	| Lexer.BadChar chr ->
-		Lexer.display_error (Printf.sprintf "bad character '%c'" chr); exit 2
 	| Sys_error m ->
 		Printf.fprintf stderr "ERROR: input/output error: %s\n" m;
 		exit 3

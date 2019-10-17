@@ -50,5 +50,3 @@ let _ =
 	with
 	  Parsing.Parse_error ->
 		Lexer.display_error "syntax error"; exit 2
-	| Lexer.BadChar chr ->
-		Lexer.display_error (Printf.sprintf "bad character '%c'" chr); exit 2

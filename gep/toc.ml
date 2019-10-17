@@ -607,7 +607,7 @@ let rec unaliased_mem_name name =
 		| Irg.LOC_NONE -> name
 		| Irg.LOC_REF (_, n, _, _, _) -> unaliased_mem_name n
 		| _ -> failwith "no concat !")
-	| _ -> failwith "not memory !"
+	| _ -> failwith (sprintf "not memory: %s" name)
 
 
 (* Debug Function
@@ -1779,7 +1779,10 @@ let gen_action info name =
 	(*gen_stat info (gen_pc_increment info);*)
 
 	(* generate the code *)
-	gen_call info name;
+	(try
+		gen_call info name;
+	with PreError f ->
+		Irg.error_spec info.inst f);
 
 	(* cleanup at end *)
 	cleanup_temps info;
