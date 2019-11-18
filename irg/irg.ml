@@ -1908,6 +1908,20 @@ let rec attr_expr id attrs def =
 
 
 (** Get an attribute as a statement.
+	@param id	Identifier of the looked attribute.
+	@param spec	List of attributes.
+	@return		Option of the found statement. *)
+(*let find_stmt_attr id spec =
+	let rec lookup attrs =
+		match attrs with
+		| [] -> None
+		| (ATTR_STAT (id', s))::_ when id = id' -> s
+		| (ATTR_EXPR (id', _))::_ when id = id' -> None
+	| (ATTR_LOC (id', _))::_ when id = id' -> error ()
+	| _::tl -> attr_expr id tl def*)
+
+
+(** Get an attribute as a statement.
 	@param id			Identifier of the looked attribute.
 	@param attrs		List of attributes.
 	@param def			Default value if the attribute is not found.

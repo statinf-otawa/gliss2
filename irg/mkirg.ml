@@ -23,7 +23,10 @@
 let nmp = ref ""
 let out = ref ""
 let insts = ref false
-let options = IrgUtil.options
+let orphans = ref false
+let options =
+	("--orphan", Arg.Set orphans, "Display list of orphan instructions") ::
+	IrgUtil.options
 
 (* argument decoding *)
 let free_arg arg =

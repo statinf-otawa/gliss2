@@ -9,6 +9,7 @@ DOCS = \
 	irg/irg.ml \
 	irg/sem.ml \
 	irg/iter.ml \
+	irg/irgUtil.ml \
 	gep/toc.ml \
 	gep/app.ml
 DOCFLAGS = \

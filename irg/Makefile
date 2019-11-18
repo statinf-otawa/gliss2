@@ -27,6 +27,9 @@ $(eval $(call ocaml_prog,print_irg,print_irg.ml))
 mkirg_LIBS=unix str irg
 $(eval $(call ocaml_prog,mkirg,mkirg.ml))
 
+gliss-tree_LIBS=unix str irg
+$(eval $(call ocaml_prog,gliss-tree,gliss_tree.ml))
+
 CLEAN += config.ml
 
 include ../Makefile.tail
