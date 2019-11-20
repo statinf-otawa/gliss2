@@ -633,23 +633,23 @@ StatementList:
 
 Statement:
 	/* empty */
-		{ Irg.NOP }
+		{ line Irg.NOP }
 |	ACTION
-		{ Irg.EVAL ("", "action") }
+		{ handle_stat (fun _ -> Sem.make_eval "" "action") }
 |	ID
-		{ Irg.EVAL ("", $1) }
+		{ handle_stat (fun _ -> Sem.make_eval "" $1) }
 |	ID LPAREN
 		{ raise (Irg.SyntaxError (Printf.sprintf "unreduced macro '%s'" $1)) }
 |	ID DOT ACTION
-		{ Irg.EVAL ($1, "action")  }
+		{ handle_stat (fun _ -> Sem.make_eval $1 "action") }
 |	ID DOT ID
-		{ Irg.EVAL ($1, $3) }
+		{ handle_stat (fun _ -> Sem.make_eval $1 $3) }
 |	Location EQ Expr
 		{ handle_stat (fun _ -> Sem.make_set $1 $3) }
 |	ConditionalStatement
 		{ $1 }
 |	STRING_CONST LPAREN ArgList RPAREN
-		{ Sem.test_canonical $1; Sem.build_canonical_stat $1 (List.rev $3) }
+		{ handle_stat (fun _ -> Sem.test_canonical $1; Sem.build_canonical_stat $1 (List.rev $3)) }
 |	ERROR LPAREN STRING_CONST RPAREN
 		{ handle_stat (fun _ -> Irg.ERROR $3) }
 |	LET ID EQ Expr

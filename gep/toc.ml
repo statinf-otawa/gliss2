@@ -17,6 +17,8 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  *)
 
+open Printf
+
 exception UnsupportedType of Irg.type_expr
 exception UnsupportedExpression of Irg.expr
 exception Error of string
@@ -1699,23 +1701,36 @@ let find_recursives info name =
 			let rec look_stat stat recs =
 				match stat with
 				| Irg.NOP
-				| Irg.LOCAL _ -> recs
-				| Irg.SEQ (s1, s2) -> look_stat s1 (look_stat s2 recs)
-				| Irg.EVAL ("", name) -> look_attr name stack recs
-				| Irg.EVAL _ -> error "unsupported form"
-				| Irg.SET _ -> recs
-				| Irg.CANON_STAT _ -> recs
-				| Irg.ERROR _ -> recs
-				| Irg.IF_STAT (_, s1, s2) -> look_stat s1 (look_stat s2 recs)
+				| Irg.LOCAL _ ->
+					recs
+				| Irg.SEQ (s1, s2) ->
+					look_stat s1 (look_stat s2 recs)
+				| Irg.EVAL ("", name) ->
+					look_attr name stack recs
+				| Irg.EVAL _ ->
+					error "unsupported form"
+				| Irg.SET _
+				| Irg.CANON_STAT _
+				| Irg.ERROR _ ->
+					recs
+				| Irg.IF_STAT (_, s1, s2) ->
+					look_stat s1 (look_stat s2 recs)
 				| Irg.SWITCH_STAT (_, cases, def) ->
 					look_stat def (List.fold_left
 						(fun recs (_, s) -> look_stat s recs)
 						recs
 						cases)
-				| Irg.LINE (file, line, s) -> locate_error file line (fun (s, r) -> look_stat s r) (s, recs)
-				| Irg.FOR (v, uv, t, l, u, b) -> look_stat b recs in
-
-			look_stat (get_stat_attr name) recs in
+				| Irg.LINE (file, line, s) ->
+					locate_error file line (fun (s, r) -> look_stat s r) (s, recs)
+				| Irg.FOR (v, uv, t, l, u, b) ->
+					look_stat b recs in
+			try
+				look_stat (get_stat_attr name) recs
+			with Failure _ -> begin
+				printf "DEBUG: find_recursives %s of %s\n" name info.iname;
+				Irg.print_spec info.inst;
+				failwith "bof"
+			end in
 	
 	info.recs <- look_attr name [] []
 

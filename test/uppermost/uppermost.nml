@@ -1,0 +1,18 @@
+let proc="mine"
+let gliss_isize = "32"
+let bit_order = "UPPERMOST"
+
+reg PC[1, card(32)] pc=1
+reg R[16, card(32)]
+
+op init()
+	action = { }
+
+op instruction = one
+
+op one(i: card(4))
+	syntax = "gen"
+	image = format("0000 %4b XXXXXXXX XXXXXXXX XXXXXXXX", i)
+	action = {
+		R[i]<31..28> = R[i]<3..0>;
+	}

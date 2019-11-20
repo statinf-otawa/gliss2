@@ -19,6 +19,8 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  *)
 
+open Printf
+
 (** Here is the module in charge of the generation of fetch_table.h *)
 
 (*
@@ -210,27 +212,24 @@ let rec build_dectrees vl msk gm il =
 	@param tr	Tree to find children for.
 	@return		List of children trees. *)
 let build_sons_of_tree tr =
-	match tr with
-	DecTree(int_l, sl, msk, gm, dt_l) ->
-		let res = build_dectrees (sort_son_list (create_son_list_of_dec_node tr)) msk gm int_l
-		in
-		if (List.length res) == 1 && (List.length (get_instr_list (List.hd res))) > 1 then
-			(output_string stderr "ERROR: some instructions seem to have same opcode:\n";
-			let expr_from_value v =
-				match v with
-				| Iter.EXPR(e) -> e
-				| _ -> failwith "should not happen (fetch.ml::build_sons_of_tree::expr_from_value)"
-			in
-			List.iter
-				(fun x ->
-					Printf.fprintf stderr "\timage=";
-					Irg.output_expr stderr (expr_from_value (Iter.get_attr x "image"));
-					Printf.fprintf stderr "\n\t\t(%s)\n" (Iter.get_user_id x))
-				(get_instr_list (List.hd res));
-			output_string stderr "\n";
-			raise (Sys_error "cannot continue with 2 instructions with same image"))
-		else
-			res
+	let DecTree(int_l, sl, msk, gm, dt_l) = tr in
+	let res = build_dectrees (sort_son_list (create_son_list_of_dec_node tr)) msk gm int_l in
+	
+	(* no ambiguity *)	
+	if (List.length res) != 1 || (List.length (get_instr_list (List.hd res))) == 1 then
+		res
+	
+	(* display ambiguous instructions *)
+	else begin
+		output_string stderr "ERROR: some instructions seem to have same opcode:\n";
+		List.iter
+			(fun x ->
+				fprintf stderr "* syntax= %s\n" (Irg.format_string (Irg.attr_expr "syntax" (Irg.attrs_of x) Irg.NONE));
+				fprintf stderr "  image = %s\n" (Irg.format_string (Irg.attr_expr "image" (Irg.attrs_of x) Irg.NONE)))
+			(get_instr_list (List.hd res));
+		output_string stderr "\n";
+		raise (Sys_error "cannot continue with 2 instructions with same image")
+	end
 
 
 (**	Build the tree to decode the instruction.

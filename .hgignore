@@ -11,6 +11,11 @@ test/noiset/src
 test/noiset/include
 test/out
 test/public
+test/all
+test/decode
+test/uppermost/src
+test/uppermost/include
+test/uppermost/Makefile
 .*/maat
 .*/\.maat
 .*\.dep
@@ -22,6 +27,7 @@ gep/templater.ml
 irg/config.ml
 irg/lexer.ml
 irg/mkirg
+irg/gliss-tree
 irg/parser.ml
 irg/parser.mli
 irg/parser.output
