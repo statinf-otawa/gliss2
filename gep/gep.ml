@@ -19,7 +19,6 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  *)
 open Lexing
-open Printf
 
 
 (* (** module structure *) *)
@@ -749,13 +748,10 @@ let _ =
 		options
 		"SYNTAX: gep [options] NML_FILE\n\tGenerate code for a simulator"
 		(fun info ->
-			if !check then begin
-				fprintf stderr "Just checking consistency of opcodes...\n";
+			if !check then
 				let _ = Iter.get_insts () in
 				()
-			end
 			else
-			begin
 
 				(* check any available instruction set *)
 				if not !no_default && Iter.get_insts () = [] then
@@ -841,5 +837,4 @@ let _ =
 							"sim/Makefile"
 					with Not_found ->
 						raise (Sys_error "no template to make sim program")
-			end
 		)

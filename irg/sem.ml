@@ -2321,47 +2321,6 @@ let make_canon_expr name params =
 	CANON_EXPR(t, name, check_canon_params name params)
 
 
-(** Build an evaluation based on field pf symbols.
-	@param sname	Symbol name (possibly "" for local name).
-	@param aname	Field name. *)
-let make_eval sname aname =
-	EVAL (sname, aname)
-	(*if sname = "" then
-	
-		if not (is_defined aname)
-		then error (Irg.asis (sprintf "local attribute %s is undefined" aname))
-		else Irg.EVAL ("", aname)
-	else
-		let s = get_symbol sname in
-		if s = UNDEF
-		then error (Irg.asis (sprintf "symbol %s is undefined" sname))
-		else if not (attr_defined aname (attrs_of s))
-		then error (Irg.asis (sprintf "attribute %s of %s is undefined" aname sname))
-		else Irg.EVAL(sname, aname)*)
-
-
-(** Perform the given test on the attributes of the given
-	symbol. If the symbol is a OR and the attribute is not dofined,
-	look up in sub-symbols. 
-	@param sname	Name of the symbol.
-	@param aname	Name of the attribute.
-	@param test		Test to perform on the attribute value to bool.
-	@return			List of symbols for which the check failed. *)
-let rec lookup_attr test aname sname =
-	let s = get_symbol sname in
-	let r =
-		match get_attr aname (attrs_of s) with
-		| None -> false
-		| Some a -> test a in
-	if r then [] else
-	match s with
-	| OR_OP (_, names, _)
-	| OR_MODE (_, names, _) ->
-		List.flatten (List.map (lookup_attr test aname) names)
-	| _ ->
-		[sname]
-	
-
 (** Perform final checking on the loaded file. For now, it includes only:
 	- availability of "proc" or "NAME" string constant.
 	*)
@@ -2459,62 +2418,6 @@ let final_checks () =
 			check_image_expr (attr_expr "image" atts NONE)
 		with PreError f ->
 			error_symbol id f in
-
-	(* check statement for well-formed eval *)
-	let rec check_eval name s =
-		let check sname aname = 
-			let l = lookup_attr is_stat_attr aname sname in
-			match l with
-			| [] ->
-				()
-			| [name] ->
-				stat_error s (fun out -> fprintf out "%s is not defined in %s" aname sname)
-			| _ ->
-				stat_error s
-					(fun out -> fprintf out "following symbols does not define %s:\n" aname;
-						List.iter (fun n -> fprintf out "  * %s\n" n) l) in
-		match s with
-		| NOP
-		| SET _
-		| CANON_STAT _
-		| ERROR _
-		| LOCAL _ ->
-			()
-		| SEQ (s1, s2)
-		| IF_STAT (_, s1, s2) ->	
-			check_eval name s1; check_eval name s2 
-		| SWITCH_STAT (_, cs, dc) ->
-			check_eval name dc;
-			List.iter (fun (_, s) -> check_eval name s) cs
-		| LINE (f, l, s) ->
-			handle_error f l (fun _ -> check_eval name s)
-		| FOR (_, _, _, _, _, s) ->
-			check_eval name s
-		| EVAL ("", name) ->
-			(match get_symbol name with
-			| UNDEF ->
-				stat_error s (fun out -> fprintf out "%s is not defined!" name)
-			| ATTR (ATTR_STAT _) ->
-				()
-			| _ ->
-				stat_error s (fun out -> fprintf out "%s should be a statement attribute!" name))
-		| EVAL (sname, aname) ->
-			match get_symbol sname with
-			| UNDEF ->
-				stat_error s (fun out -> fprintf out "%s is not defined!" sname)
-			| PARAM(_, TYPE_ID name) ->
-				check name aname
-			| _ ->
-				stat_error s (fun out -> fprintf out "%s should be a n OP or a MODE parameter" name) in
-	
-	(* check attributes *)
-	let check_attrs name spec _ =
-		List.iter
-			(fun a ->
-				match a with
-				| ATTR_STAT (_, s) -> check_eval name s
-				| _ -> ())
-			(attrs_of spec) in
 	
 	(* check modes and operations *)
 	iter (fun _ s ->
@@ -2528,11 +2431,10 @@ let final_checks () =
 	(* check images *)
 	iter (fun _ s ->
 		match s with
-		| AND_MODE(id, _, _, atts)		
-		| AND_OP (id, _, atts) -> check_image id atts
+		| AND_MODE(id, _, _, atts)	-> check_image id atts
+		| AND_OP (id, _, atts)		-> check_image id atts
 		| _ -> ());
-	
-	(* check all evaluations in attributes *)
-	iter (fun n s -> in_spec_context s (check_attrs n s))
+		
+	()
 
 	

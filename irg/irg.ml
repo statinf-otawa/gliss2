@@ -42,7 +42,6 @@
 	- {!add_pos} to add source information for a symbol,
 	- {!add_symbol} to add a new symbol,
 	- {!fold} to perform a computation on the set of symbols,
-	- {!format_str} to get tge format string of an expression,
 	- {!get_canon} to get a canonical function,
 	- {!get_isize} to get the instruction size special constant,
 	- {!get_proc_name} to get ISA name,
@@ -83,9 +82,6 @@
 	- {!attr_loc} to get an attribute of type location,
 	- {!attr_name} to get the name of an attribute,
 	- {!attrs_of} to get the attributes of a specification,
-	- {!get_attr} to obtain an attribute by its name,
-	- {!is_expr_attr} to test if an attribute contains an expression,
-	- {!is_stat_attr} to test if an attribute contains a statement,
 	- {!set_attr} to set an attribute value in an attribute list.
 
 	Other function are useful to handle specifications:
@@ -424,30 +420,14 @@ let name_of spec =
 	| ATTR(ATTR_USES)				-> "<ATTR_USES>"
 
 
-(** String hash module. *)
+(* Symbol table *)
 module HashString =
 struct
 	type t = string
 	let equal (s1 : t) (s2 : t) = s1 = s2
 	let hash (s : t) = Hashtbl.hash s
 end
-
-
-(** String hash table module. *)
 module StringHashtbl = Hashtbl.Make(HashString)
-
-
-(** String comparison module. *)
-module StringOrder =
-struct
-	type t = string
-	let compare = compare
-end
-
-
-(** String set module. *)
-module StringSet = Set.Make(StringOrder)
-
 
 (** table of symbols of the current loaded NMP or IRG file. *)
 let syms : spec StringHashtbl.t = StringHashtbl.create 211
@@ -861,35 +841,6 @@ let in_context params attrs f =
 	param_unstack params;
 	attr_unstack attrs;
 	r
-
-
-(** Execute the given function in the context of the given specification.
-	The context is built by adding attributes and parameters (if any)
-	of the specification to the main symbol table.
-	@param spec	Specification to build context for.
-	@param f	Function to execute in the context. *)
-let in_spec_context spec f =
-	let (pars, atts) =
-		match spec with
-		| UNDEF
-		| RES _
-		| EXN _
-		| PARAM _
-		| ATTR _
-		| CANON_DEF _
-			-> ([], [])
-		| LET (_, _, _, atts)
-		| TYPE (_, _, atts)
-		| MEM (_, _, _, atts)
-		| REG (_, _, _, atts)
-		| VAR (_, _, _, atts)
-		| OR_MODE (_, _, atts)
-		| OR_OP (_, _, atts)
-			-> ([], atts)
-		| AND_MODE (_, pars, _, atts)
-		| AND_OP (_, pars, atts)
-			-> (pars, atts) in
-	in_context pars atts f
 
 
 (* --- canonical functions --- *)
@@ -1805,8 +1756,6 @@ let println lst = outputln lst stdout
 let prerrln lst = outputln lst stderr
 
 
-
-
 (** Get statement attribute from the main symbol table.
 	@param id		Attribute identifier.
 	@param def		Default value.
@@ -1918,9 +1867,7 @@ and line_from_list lst =
 	@param fn 		Function to display error. *)
 let stat_error stat fn =
 	let (f, l) = line_from_stat stat in
-	if (f, l) = no_line
-	then error fn
-	else complete_error fn f l
+	complete_error fn f l
 
 
 (** Raise an error relative to an expression.
@@ -1928,9 +1875,7 @@ let stat_error stat fn =
 	@param fn 		Function to display error. *)
 let expr_error expr fn =
 	let (f, l) = line_from_expr expr in
-	if (f, l) = no_line
-	then error fn
-	else complete_error fn f l
+	complete_error fn f l
 
 
 (** Test if the given ID design a register.
@@ -2027,19 +1972,7 @@ let rec attr_stat id attrs def =
 	| _::tl -> attr_stat id tl def
 
 
-(** Get the attribute corresponding to the given name.
-	@param name	Looked name.
-	@param atts Attribute list to look in.
-	@return		Option of the found or not found attribute. *)
-let rec get_attr name atts =
-	match atts with
-	| [] -> None
-	| a::t ->
-		match a with
-		| ATTR_EXPR (n, _)
-		| ATTR_STAT (n, _)
-		| ATTR_LOC (n, _) when n = name -> Some a 
-		| _ -> get_attr name t
+
 
 
 (* local variable management *)
@@ -2083,42 +2016,3 @@ let get_arg_def id =
 		Some (List.assoc id !arg_defs)
 	with Not_found ->
 		None
-
-
-(** Get the first format string found in the given expression.
-	@param e	Expression to look in.
-	@return		First found format string or an empty string. *)
-let rec format_string e =
-		match e with
-		| FORMAT (f, _) -> f
-		| IF_EXPR (_, _, e1, e2) ->
-			let s = format_string e1 in
-			if s <> "" then s else format_string e2
-		| SWITCH_EXPR (_, _, cs, dc) ->
-			let s = format_string dc in
-			if s <> "" then s else
-			List.fold_left (fun s (_, e) ->
-				if s <> "" then s else format_string e) s cs
-		| ELINE (_, _, e) ->
-			format_string e
-		| _ -> ""
-
-
-(** Test if the given attribute is a statement attribute.
-	@param a	Attribute to test.
-	@return		True if it is a statement attribute, false else. *)
-let is_stat_attr a =
-	match a with
-	| ATTR_STAT _ -> true
-	| _ -> false
-
-
-(** Test if the given attribute is an expression attribute.
-	@param a	Attribute to test.
-	@return		True if it is an expression attribute, false else. *)
-let is_expr_attr a =
-	match a with
-	| ATTR_EXPR _ -> true
-	| _ -> false
-
-
