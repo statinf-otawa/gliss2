@@ -83,8 +83,8 @@ let rec gen_disasm info inst expr =
 	let fix f a =
 		(match String.get f ((String.length f) - 1) with
 		| 'd' | 'i' | 'u'	-> dec_format
-		| 'x' 				-> unsigned_format "x" "lx" "Lx"
-		| 'X' 				-> unsigned_format "X" "lX" "LX"
+		| 'x' 				-> unsigned_format "x" "x" "Lx"
+		| 'X' 				-> unsigned_format "X" "X" "LX"
 		| 'o' 				-> unsigned_format "o" "lo" "Lo"
 		| 'b' 				-> unsigned_format "b" "lb" "Lb"
 		| _ 				-> (fun f _ -> f)) f a in

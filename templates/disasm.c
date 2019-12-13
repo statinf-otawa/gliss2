@@ -6,6 +6,7 @@
 #include <$(proc)/id.h>
 #include <$(proc)/macros.h>
 #include <$(proc)/grt.h>
+#include "platform.h"
 
 
 /* useful macros */
