@@ -17,6 +17,8 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  *)
 
+open Printf
+
 exception UnsupportedType of Irg.type_expr
 exception UnsupportedExpression of Irg.expr
 exception Error of string
@@ -778,25 +780,27 @@ let rec unalias_ref info expr stats =
 		match Irg.get_symbol name with
 		(* IRg.MEM added makes everything goes badly (with ppc2 and arm at least) *)
 		| Irg.REG _ ->
-			unalias_expr name idx Irg.NONE Irg.NONE typ
+			(stats, unalias_expr name idx Irg.NONE Irg.NONE typ)
 		| Irg.MEM _ ->
 			if unalias_mem then
-				unalias_expr name idx Irg.NONE Irg.NONE typ
+				(stats, unalias_expr name idx Irg.NONE Irg.NONE typ)
 			else
-				expr
+				(stats, expr)
 		| Irg.VAR (_, cnt, Irg.NO_TYPE, _) ->
-			expr
+			(stats, expr)
 		| Irg.VAR (_, cnt, t, attrs) ->
-			add_var info name cnt t; expr
+			add_var info name cnt t; (stats, expr)
+		| Irg.ATTR (Irg.ATTR_EXPR (_, e)) ->
+			prepare_expr info stats e
 		| _ ->
-			expr in
+			(stats, expr) in
 	match expr with
 	| Irg.REF (_, name) ->
 		(* if mem ref, leave it this way, it surely is a parameter for a canonical *)
-		(stats, unalias name Irg.NONE Irg.BOOL false)
+		unalias name Irg.NONE Irg.BOOL false
 	| Irg.ITEMOF (typ, tab, idx) ->
 		let (stats, idx) = prepare_expr info stats idx in
-		(stats, unalias tab idx typ true)
+		unalias tab idx typ true
 	| _ -> failwith "toc:unalias_ref"
 
 
@@ -1021,10 +1025,14 @@ let rec prepare_stat info stat =
 		handle_error file line
 			(fun _ -> Irg.LINE (file, line, prepare_stat info stat))
 		
-	| Irg.LOCAL (v, o, t) ->
+	| Irg.LOCAL (v, o, t, i) ->
 		if not (is_supported t)
 		then pre_error (Irg.outputln [Irg.PTEXT "unsupported type "; Irg.PTYPE t; Irg.PTEXT " for local variable ";  Irg.PTEXT o])
-		else Irg.handle_local v t; stat
+		else begin
+			Irg.handle_local v t;
+			let (stats, expr) = prepare_expr info Irg.NOP i in
+			prepare_set stats (Irg.LOC_REF (t, v, Irg.NONE, Irg.NONE, Irg.NONE)) expr
+		end
 		
 	| Irg.FOR (v, uv, t, l, u, b) ->
 		if not (is_supported t)
@@ -1053,14 +1061,10 @@ and prepare_call info name =
 (** Generate a prepared expression.
 	@param info		Generation information.
 	@param expr		Expression to generate.
-	@param prfx		Boolean indicating if state members (reg, mem, ...) should be prefixed by PROC_NAME,
-				transmitted to most of the other gen_xxx expr related functions *)
-let rec gen_expr info (expr: Irg.expr) prfx =
-(*!!DEBUG!!*)
-(*let level = !ge in
-Printf.printf "**gen_expr(%d), prfx=%b, expr=" level prfx; ge := !ge + 1;
-Irg.print_expr expr; print_char '\n';*)
-
+	@param prfx		Boolean indicating if state members (reg, mem, ...)
+					should be prefixed by PROC_NAME, transmitted to most
+					of the other gen_xxx expr related functions. *)
+let rec gen_expr info expr prfx =
 	let out = output_string info.out in
 
 	match expr with
@@ -1082,11 +1086,12 @@ Irg.print_expr expr; print_char '\n';*)
 	| Irg.ELINE (file, line, expr) ->
 		(try gen_expr info expr prfx
 		with PreError f -> raise (LocError (file, line, f)))
-	| Irg.FORMAT _ -> failwith "format out of image/syntax attribute"
+	| Irg.FORMAT _ ->
+		failwith "format out of image/syntax attribute"
 	| Irg.IF_EXPR _
 	| Irg.SWITCH_EXPR _
 	| Irg.FIELDOF _ ->
-		error_on_expr "should have been reduced" expr
+		failwith "Toc.gen_expr: unreduced expression!"
 	| Irg.CAST (size, expr) -> gen_cast info size expr prfx
 
 
@@ -1699,23 +1704,34 @@ let find_recursives info name =
 			let rec look_stat stat recs =
 				match stat with
 				| Irg.NOP
-				| Irg.LOCAL _ -> recs
-				| Irg.SEQ (s1, s2) -> look_stat s1 (look_stat s2 recs)
-				| Irg.EVAL ("", name) -> look_attr name stack recs
-				| Irg.EVAL _ -> error "unsupported form"
-				| Irg.SET _ -> recs
-				| Irg.CANON_STAT _ -> recs
-				| Irg.ERROR _ -> recs
-				| Irg.IF_STAT (_, s1, s2) -> look_stat s1 (look_stat s2 recs)
+				| Irg.LOCAL _ ->
+					recs
+				| Irg.SEQ (s1, s2) ->
+					look_stat s1 (look_stat s2 recs)
+				| Irg.EVAL ("", name) ->
+					look_attr name stack recs
+				| Irg.EVAL _ ->
+					error "unsupported form"
+				| Irg.SET _
+				| Irg.CANON_STAT _
+				| Irg.ERROR _ ->
+					recs
+				| Irg.IF_STAT (_, s1, s2) ->
+					look_stat s1 (look_stat s2 recs)
 				| Irg.SWITCH_STAT (_, cases, def) ->
 					look_stat def (List.fold_left
 						(fun recs (_, s) -> look_stat s recs)
 						recs
 						cases)
-				| Irg.LINE (file, line, s) -> locate_error file line (fun (s, r) -> look_stat s r) (s, recs)
-				| Irg.FOR (v, uv, t, l, u, b) -> look_stat b recs in
-
-			look_stat (get_stat_attr name) recs in
+				| Irg.LINE (file, line, s) ->
+					locate_error file line (fun (s, r) -> look_stat s r) (s, recs)
+				| Irg.FOR (v, uv, t, l, u, b) ->
+					look_stat b recs in
+			try
+				look_stat (get_stat_attr name) recs
+			with Failure _ -> begin
+				failwith "Toc.find_recursives"
+			end in
 	
 	info.recs <- look_attr name [] []
 

@@ -19,7 +19,7 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  *)
 
-
+open Printf
 
 (** Returns the syntax string (if syntax = string_const)
 	or the syntax format string s (if syntax = format(s, ...))
@@ -44,7 +44,7 @@ let get_format_string sp =
 		| _ -> Irg.NONE
 	in
 	let image_attr =
-		get_expr_from_iter_value (Iter.get_attr sp "image")
+		Iter.flatten_expr sp (get_expr_from_iter_value (Iter.get_attr sp "image"))
 	in
 	let rec get_str e =
 		match e with
@@ -85,14 +85,17 @@ let get_format_length f =
 	List.fold_left aux  0 f
 
 
-(* s is supposed to be a format syntax string (a string with only 0, 1 and %nb formats with n >= 0, spaces removed),
- * returns the mask for the nth format of s (n beginning at 0) *)
+(** s is supposed to be a format syntax string (a string with only 0, 1
+	and %nb formats with n >= 0, spaces removed),
+	@param s	Format string.
+	@param n	Position of the looked parameter.
+	@return		The mask for the nth format of s (n beginning at 0). *)
 let get_mask_for_format_param s n =
 	let s_cut = Str.full_split (Str.regexp "%[0-9]+b") s in
 	let rec find_pos ss pos i =
 		match ss with
 		| [] ->
-			failwith "shouldn't happen (decode.ml::get_mask_for_format_param::find_pos)"
+			failwith "Decode.get_mask_for_format_param"
 		| a::b ->
 			(match a with
 			| Str.Delim(d) -> if i == n then (pos, d) else find_pos b (pos + get_length_from_format d) (i + 1)
@@ -102,6 +105,7 @@ let get_mask_for_format_param s n =
 	let lf = get_length_from_format f in
 	let l = get_format_length s_cut in
 	Bitmask.BITMASK((String.make pos '0') ^ (String.make lf '1') ^ (String.make (l - pos - lf) '0'))
+
 
 (** return the mask for the nth param (counting from 0) of an instr of the given spec sp,
 	the result will be a string with only '0' or '1' chars representing the bits of the mask,
@@ -139,7 +143,7 @@ let get_mask_for_param sp n =
 		| Irg.ELINE (_, _, ee) -> get_name_of_param ee
 		| _ -> failwith "(Decode) parameter in image format is too complex to process" in
 
-	let image_attr = get_expr_from_iter_value (Iter.get_attr sp "image") in
+	let image_attr = Iter.flatten_expr sp (get_expr_from_iter_value (Iter.get_attr sp "image")) in
 	let frmt_params = get_frmt_params image_attr in
 	let str_params = get_format_string sp in
 

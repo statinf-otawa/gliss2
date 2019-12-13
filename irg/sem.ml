@@ -144,7 +144,6 @@ let warn f =
 	Printf.fprintf stderr "WARNING:%s:%d: " !(Lexer.file) !(Lexer.line);
 	f stderr
 
-
 (** False value. *)
 let false_const = CARD_CONST Int32.zero
 
@@ -154,6 +153,10 @@ let true_const = CARD_CONST Int32.one
 (** Set to true to activate compatibility GLISS1. It includes mainly:
 	- Parameter are assignable. *)
 let gliss1_compat = ref true
+
+
+(** Current attribute name. *)
+let attr_env = ref ""
 
 
 (** Return the minimum number of bits to represent value n.
@@ -522,6 +525,56 @@ let eval_const expr =
 	snd (eval_typed_const expr)
 
 
+(** Test if the given expression is constant.
+	@param e	Expression to test.
+	@return		True if the expression is constant, false else. *)
+let rec is_const e =
+	match e with
+	| NONE
+	| CONST _ ->
+		true
+	| COERCE(_, e)
+	| UNOP (_, _, e)
+	| ELINE (_, _, e)
+	| CAST (_, e) ->
+		is_const e
+	| FORMAT (_, es) ->
+		List.for_all is_const es
+	| BITFIELD (_, e, u, l) ->
+		(is_const e) && (is_const u) && (is_const l)
+	| BINOP (_, _, e1, e2) ->
+		(is_const e1) && (is_const e2)
+	| IF_EXPR (_, c, e1, e2) ->
+		(is_const c) && (is_const e1) && (is_const e2)
+	| SWITCH_EXPR (_, c, cs, d) ->
+		(is_const c) && (is_const d) && (List.for_all (fun (_, e) -> is_const e) cs)
+	| CANON_EXPR _
+	| REF _
+	| FIELDOF _
+	| ITEMOF _ ->
+		false
+		
+	
+(** Apply the coercition of t to expression e. If e is constant, the
+	constant value is converted.
+	@param t	Type to coerce to.
+	@param e	Expression to coerce.
+	@return		Coerced expression. *)
+let coerce_if_const t e =
+	let rec coerce e =
+		match e with
+		| CONST (t, c) ->
+			Some (CONST (t, eval_coerce t (t, c)))
+		| ELINE (f, l, e) ->
+			(match coerce e with
+			| None -> None
+			| Some e -> Some (ELINE (f, l, e)))
+		| _ -> None in
+	match coerce e with
+	| None -> COERCE (t, e)
+	| Some e -> e
+
+
 (** Find a type by its identifier.
 	@param id		Identifier of the looked type.
 	@return			Type matching the identifier.
@@ -571,53 +624,60 @@ let is_IEEE754_float f = match f with
 (** Get the type associated with an identifiant.
 	@param id	The identifiant to type.
 	@return A type.
-	@raise SemError if the keyword is not defined. *)
+	@raise Error if the keyword is not defined. *)
 let rec get_type_ident id=
-	let symb= get_symbol id
-	in
+	let sym = get_symbol id in
+	if sym = UNDEF then error_undefined id else
 
-	if symb=UNDEF
-	then
-		pre_error (sprintf "The keyword \"%s\" not defined" id)
-	else
+	match sym with
 
-	match symb with
 	| LET (_, _, c, _)->
 			(match c with
 			| NULL				-> NO_TYPE
-			| CARD_CONST _		->CARD 32
-			| CARD_CONST_64 _	->CARD 64
+			| CARD_CONST _		-> CARD 32
+			| CARD_CONST_64 _	-> CARD 64
 			| STRING_CONST _	-> STRING
 			| FIXED_CONST _		-> FLOAT (24,8)
 			| CANON _ 			-> ANY_TYPE)
-	| TYPE (_,t, _)->(match t with
-			ENUM l->(let i = List.length l in
-				CARD (int_of_float (ceil ((log (float i)) /. (log 2.)))))
-			|_->t)
-	| MEM (_,_,t,_)->t
-	| REG (_,_,t,_)->t
-	| VAR (_,_,t, _)->t
-	| AND_MODE (_,l,e,_)->	(
-				 param_stack l;
-				 let t= get_type_expr e
-				 in
-				 param_unstack l;
-				 t
-				)
 
-	| OR_MODE _ -> ANY_TYPE
+	| TYPE (_,t , _) ->
+		(match t with
+		| ENUM l ->
+			let i = List.length l in
+			CARD (int_of_float (ceil ((log (float i)) /. (log 2.))))
+		| _ -> t)
 
-	| PARAM (n,t)->( rm_symbol n;
-			let type_res=(
-				match t with
-				 TYPE_ID idb->get_type_ident idb
-				|TYPE_EXPR tb->tb)	(* ??? *)
-			in
+	| MEM (_,_,t,_) -> t
+	| REG (_,_,t,_) -> t
+	| VAR (_,_,t, _) -> t
+	| AND_MODE (_, l, e, _) ->
+		begin
+			param_stack l;
+			let t = get_type_expr e in
+			param_unstack l;
+			t
+		end
+
+	| OR_MODE _ ->
+		ANY_TYPE
+
+	| PARAM (n, t)->
+		begin
+			rm_symbol n;
+			let type_res =
+				(match t with
+				| TYPE_ID idb -> get_type_ident idb
+				| TYPE_EXPR tb -> tb) in
 			add_param (n,t);
-			type_res)
+			type_res
+		end
+
 	| ATTR (ATTR_EXPR (_, expr)) -> get_type_expr expr
+
 	| ATTR _ -> NO_TYPE
+
 	| _ ->NO_TYPE
+
 
 (** Get the type of an expression
 	@param exp 	Expression  to evaluate
@@ -769,16 +829,16 @@ let coerce_to_float e t =
 	@return			(natural coercition, coerced expression to int or NONE (if coercition is impossible)). *)
 let coerce_to_string e =
 	match get_type_expr e with
-	| NO_TYPE		-> (false, NONE)
+	| NO_TYPE	-> (false, NONE)
 	| STRING
-	| ANY_TYPE		-> (true, e)
+	| ANY_TYPE	-> (true, e)
 	| BOOL
 	| INT _
 	| CARD _
 	| ENUM _
 	| RANGE _
 	| FLOAT _
-	| FIX _			-> (false, NONE)
+	| FIX _		-> (false, NONE)
 
 
 (** Perform automatic-coercition between numeric types, coercing to bigger type.
@@ -799,35 +859,35 @@ let rec num_auto_coerce e1 e2 =
 	| BOOL, INT _
 	| BOOL, CARD _
 	| BOOL, FLOAT _
-	| BOOL, RANGE _					-> (t2, COERCE(t2, e1), e2)
+	| BOOL, RANGE _					-> (t2, coerce_if_const t2 e1, e2)
 
 	(* INT base *)
-	| INT _, BOOL 					-> (t1, e1, COERCE(t1, e2))
-	| INT n1, INT n2 when n1 > n2 	-> (t1, e1, COERCE(t1, e2))
-	| INT n1, INT n2				-> (t2, COERCE(t2, e1), e2)
-	| INT n1, CARD n2 when n1 >= n2	-> (t1, e1, COERCE(t1, e2))
-	| INT n1, CARD n2				-> (INT(n2), COERCE(INT(n2), e1), COERCE(INT(n2), e2))
-	| INT _, FLOAT _				-> (t2, COERCE(t2, e1), e2)
+	| INT _, BOOL 					-> (t1, e1, coerce_if_const t1 e2)
+	| INT n1, INT n2 when n1 > n2 	-> (t1, e1, coerce_if_const t1 e2)
+	| INT n1, INT n2				-> (t2, coerce_if_const t2 e1, e2)
+	| INT n1, CARD n2 when n1 >= n2	-> (t1, e1, coerce_if_const t1 e2)
+	| INT n1, CARD n2				-> (INT(n2), coerce_if_const (INT(n2)) e1, coerce_if_const (INT(n2)) e2)
+	| INT _, FLOAT _				-> (t2, coerce_if_const t2 e1, e2)
 	| INT _, RANGE (l, u)			-> num_auto_coerce e1 (COERCE(extend_range l u, e2))
 
 	(* CARD base *)
-	| CARD _, BOOL 					-> (t1, e1, COERCE(t1, e2))
-	| CARD n1, INT n2 when n1 <= n2 -> (t2, COERCE(t2, e1), e2)
-	| CARD n1, INT n2			 	-> (INT(n1), COERCE(INT(n1), e1), COERCE(INT(n1), e2))
-	| CARD n1, CARD n2 when n1 < n2 -> (t2, COERCE(t2, e1), e2)
-	| CARD n1, CARD n2				-> (t1, e1, COERCE(t1, e2))
-	| CARD _, FLOAT _				-> (t2, COERCE(t2, e1), e2)
+	| CARD _, BOOL 					-> (t1, e1, coerce_if_const t1 e2)
+	| CARD n1, INT n2 when n1 <= n2 -> (t2, coerce_if_const t2 e1, e2)
+	| CARD n1, INT n2			 	-> (INT(n1), coerce_if_const (INT n1) e1, coerce_if_const (INT n1) e2)
+	| CARD n1, CARD n2 when n1 < n2 -> (t2, coerce_if_const t2 e1, e2)
+	| CARD n1, CARD n2				-> (t1, e1, coerce_if_const t1 e2)
+	| CARD _, FLOAT _				-> (t2, coerce_if_const t2 e1, e2)
 	| CARD _, RANGE (l, u)			-> num_auto_coerce e1 (COERCE(extend_range l u, e2))
 
 	(* FLOAT base *)
 	| FLOAT _, BOOL
 	| FLOAT _, INT _
-	| FLOAT _, CARD _				-> (t1, e1, COERCE(t1, e2))
+	| FLOAT _, CARD _				-> (t1, e1, coerce_if_const t1 e2)
 	| FLOAT (n1, m1), FLOAT (n2, m2)
-		when n1 + m1 > n2 + m2 		-> (t1, e1, COERCE(t1, e2))
+		when n1 + m1 > n2 + m2 		-> (t1, e1, coerce_if_const t1 e2)
 	| FLOAT (n1, m1), FLOAT (n2, m2)
-	 								-> (t2, COERCE(t2, e1), e2)
-	| FLOAT _, RANGE _				-> (t1, e1, COERCE(t1, e2))
+	 								-> (t2, coerce_if_const t2 e1, e2)
+	| FLOAT _, RANGE _				-> (t1, e1, coerce_if_const t1 e2)
 
 	(* range base type *)
 	| RANGE(l, u), INT _
@@ -845,7 +905,7 @@ let rec num_auto_coerce e1 e2 =
 
 (** Display type error for two-operand operation.
 	@param op	Operand display.
-	@parma e1	First expression.
+	@param e1	First expression.
 	@param e2	Second expression. *)
 let error_two_operands op e1 e2 =
 	error (output [
@@ -961,8 +1021,8 @@ let get_bin bop e1 e2 =
 		let s2 = get_type_length t2 in
 		let e1, e2 =
 			if t1 = t2 then (to_card e1, to_card e2) else
-			if t1 < t2 then (COERCE(CARD s2, e1), e2)
-			else (to_card e1, COERCE(CARD s1, to_card e2)) in
+			if t1 < t2 then (coerce_if_const (CARD s2) e1, e2)
+			else (to_card e1, coerce_if_const (CARD s1) (to_card e2)) in
 		BINOP(CARD(max s1 s2), bop, e1, e2)
 
 
@@ -1299,40 +1359,70 @@ let rec is_loc_spe id =
 		false
 
 
-(** this function is used to find all references to parameters in a string passed to a format
-	@param str	The string to treat
-	@return 	A list of string matching reg_exp
- *)
-let get_all_ref str =
-	let rec temp str_l res_l=
-		match str_l with
-		| [] -> res_l
-		| (Str.Text _)::l -> temp l res_l
-		| (Str.Delim s)::l -> temp l (s::res_l) in
-	temp (Irg.split_format_string str) []
+(** This function is used to find all escapes from a format string.
+	@param str	Format string to scan.
+	@return 	List of found escape (in format order). *)
+let get_format_escapes fmt  =
+	let rec scan es res =
+		match es with
+		| [] -> res
+		| (Str.Text _)::es -> scan es res
+		| (Str.Delim s)::es -> scan es (s::res) in
+	scan (Irg.split_format_string fmt) []
 
 
 (** Create a FORMAT operation and check if it is well written
-	@param fmt			The string to print
-	@param exp_list		The list of parameters to be used as variables in str (reversed order).
-	@return				Format expression.
-	@raise SemError 	Raised when the parameters are incorrect
-*)
-let build_format fmt exp_list =
+	@param fmt		The string to print
+	@param args		The list of parameters to be used as variables in str (reversed order).
+	@param attr		Current attribute name.
+	@return			Format expression.
+	@raise SemError Raised when the parameters are incorrect. *)
+let build_format fmt args attr =
+
+	let rec fix e =
+		match e with
+		| IF_EXPR (t, e1, e2, e3) ->
+			IF_EXPR (t, e1, fix e2, fix e3)
+		| SWITCH_EXPR (t, c, cs, d) ->
+			SWITCH_EXPR (t, c, List.map (fun (c, e) -> (c, fix e)) cs, fix d)
+		| ELINE (f, l, e) ->
+			ELINE (f, l, fix e)
+		| REF (_, id) ->
+			(match get_symbol id with
+			| PARAM (_, TYPE_ID tid) ->
+				(match get_symbol tid with
+				| UNDEF
+				| OR_MODE _
+				| AND_MODE _
+				| OR_OP _
+				| AND_OP _ -> FIELDOF(ANY_TYPE, id, attr)
+				| _ -> e)
+			| _ -> e)
+		| _ -> e in
+	let fix_attr f e =
+		if attr <> "" && (ends_with f "s") then fix e else e in
 
 	let rec check_arg n fmt arg =
-		let (nat, arg) =
+		let (nat, narg) =
 			match Str.last_chars fmt 1 with
-			| "d" 	-> coerce_to_int arg (INT(32))
-			| "u" 	-> coerce_to_int arg (CARD(32))
-			| "s"	-> coerce_to_string arg
-			| "b" 	-> (true, arg)
-			| "x" 	-> coerce_to_int arg (CARD(32))
-			| "f" 	-> coerce_to_float arg ieee754_64
+			| "d" ->
+				coerce_to_int arg (INT(32))
+			| "u" ->
+				coerce_to_int arg (CARD(32))
+			| "b" ->
+				(true, arg)
+			| "x" ->
+				coerce_to_int arg (CARD(32))
+			| "f" ->
+				coerce_to_float arg ieee754_64
 			| "l"	(* deprecated *)
-			| "@"	-> coerce_to_int arg (INT(32))
-			| _		-> failwith "internal error : build_format" in
-		if arg == NONE then
+			| "@" ->
+				coerce_to_int arg (INT(32))
+			| "s" ->
+				coerce_to_string arg
+			| _	->
+				failwith "internal error : build_format" in
+		if narg == NONE then
 			error (output [
 					PTEXT (sprintf "incorrect type at argument %d in format \"%s\".\n" n fmt);
 					PTEXT "\tArgument "; PEXPR arg; PTEXT " of type "; PTYPE (get_type_expr arg);
@@ -1340,18 +1430,18 @@ let build_format fmt exp_list =
 		else begin
 			(if not nat then
 				warn (output [PTEXT "possible inconsistency between format '"; PTEXT fmt; PTEXT "' and argument "; PEXPR arg]));
-			arg
+			narg
 		end in
 
 	let rec check_args n escs args =
 		match (escs, args) with
 		| [], []		-> []
 		| [], _ 		-> pre_error "too many arguments in format"
-		| _, []			-> pre_error "not enought arguments in format"
-		| e::et, a::at	-> (check_arg n e a) :: (check_args (n + 1) et at) in
+		| _, []			-> pre_error "not enough arguments in format"
+		| e::et, a::at	-> (check_arg n e (fix_attr e a)) :: (check_args (n - 1) et at) in
 
-	let ref_list = get_all_ref fmt in
-	FORMAT (fmt, List.rev (check_args 1 ref_list exp_list))
+	let escs = get_format_escapes fmt in
+	FORMAT (fmt, List.rev (check_args (List.length args) escs args))
 
 
 (** This function check if the paramters of a canonical function are correct
@@ -1583,7 +1673,7 @@ let change_string_dependences a e =
 		match e with
 		| ELINE (f, l, e) -> ELINE (f, l, look e)
 		| FORMAT (f, args) ->
-			let r_list = List.rev (get_all_ref f) in
+			let r_list = List.rev (get_format_escapes f) in
 			FORMAT (f, temp r_list args)
 		| IF_EXPR (tp, c, t, e) ->
 			IF_EXPR (tp, c, look t, look e)
@@ -1661,27 +1751,31 @@ let check_image id params =
 	let rec check l e =
 		match e with
 		| Irg.NONE
-		| Irg.CONST _
-			-> l
+		| Irg.CONST _ ->
+			l
 		| Irg.COERCE (_, e)
 		| Irg.BITFIELD (_, e, _, _)
 		| Irg.UNOP (_, _, e)
 		| Irg.ELINE (_, _, e)
-		| Irg.CAST (_, e)
-			-> check l e
-		| Irg.FORMAT (_, es)
-		| Irg.CANON_EXPR (_, _, es)
-			-> List.fold_left (fun l e -> check l e) l es
-		| Irg.REF (_, n)
+		| Irg.CAST (_, e) ->
+			check l e
+		| Irg.FORMAT (fmt, es) ->
+			List.fold_left (fun l e -> check l e) l es
+		| Irg.CANON_EXPR (_, _, es) ->
+			List.fold_left (fun l e -> check l e) l es
+		| Irg.REF (_, n) ->
+			(match get_symbol n with
+			| ATTR (ATTR_EXPR (_, e)) -> check l e 
+			| _ -> remove n l)
 		| Irg.FIELDOF (_, n, _)
-		| Irg.ITEMOF (_, n, _)
-			 -> remove n l
-		| Irg.BINOP (_, _, e1, e2)
-			-> check (check l e1) e2
-		| Irg.IF_EXPR (_, e1, e2, e3)
-			-> check (check (check l e1) e2) e3
-		| Irg.SWITCH_EXPR (_, e, es, d)
-			-> List.fold_left (fun l (_, e) -> check l e) (check (check l e) d) es in
+		| Irg.ITEMOF (_, n, _) ->
+			remove n l
+		| Irg.BINOP (_, _, e1, e2) ->
+			check (check l e1) e2
+		| Irg.IF_EXPR (_, e1, e2, e3) ->
+			check (check (check l e1) e2) e3
+		| Irg.SWITCH_EXPR (_, e, es, d) ->
+			List.fold_left (fun l (_, e) -> check l e) (check (check l e) d) es in
 
 	if e <> Irg.NONE then begin
 		let r = check names e in
@@ -1875,60 +1969,81 @@ let make_switch_expr cond cases def =
 	SWITCH_EXPR (check_switch_expr cond cases def, cond, cases, def)
 
 
-(** Check existence of data and return its type and its size.
-	Return (type, false, expression) if the symbol is an attribute
-	or (type, _, NONE) if the symbol is a valid data item.
-	@param id		Date identifier.
-	@param idx		True for indexed resource, false else.
-	@return			(type, indexed, expression for attributes)
-	@raise PreError	If the symbol does not exist or is not data. *)
-let get_data_info id =
-
-	let named_type pid id =
-		match get_symbol id with
-		| TYPE (_, t, _) 	-> t
-		| UNDEF
-		| AND_MODE _
-		| OR_MODE _ 	-> ANY_TYPE
-		| AND_OP _
-		| OR_OP _		-> error (asis (sprintf "symbol '%s' is not a data item" pid))
-		| RES _
-		| EXN _
-		| CANON_DEF _
-		| LET _
-		| REG _
-		| VAR _
-		| MEM _
-		| PARAM _
-		| ATTR _ 		-> error (asis (sprintf "invalid type for '%s'" pid)) in
-
-	match get_symbol id with
-	| UNDEF							-> error (asis (sprintf "symbol '%s' is undefined" id))
-	| LET (_, t, _, _) 				-> (t, false, NONE)
-	| REG (_, n, t, _) 				-> (t, n > 1, NONE)
-	| VAR (_, n, t, _)			 	-> (t, n > 1, NONE)
-	| MEM (_, _, t, _)				-> (t, true, NONE)
-	| PARAM (_, TYPE_EXPR t) 		-> (t, false, NONE)
-	| PARAM (_, TYPE_ID tid) 		-> (named_type id tid, false, NONE)
-	| ATTR (ATTR_EXPR (_, e))		-> (get_type_expr e, false, e)
-	| ATTR _
-	| TYPE _
-	| AND_MODE _
-	| OR_MODE _
-	| AND_OP _
-	| OR_OP _
-	| RES _
-	| EXN _
-	| CANON_DEF _					-> error (asis (sprintf "symbol '%s' is not a data item" id))
-
-
 (** Build a reference and possibly reduce to the matching attribute..
-	@param id		Identifier of the reference.
-	@return			Built expression. *)
+	@param id			Identifier of the reference.
+	@return				Built expression. *)
 let make_ref id =
 	let id = unalias_local id in
-	let (t, i, e) = get_data_info id in
-	if e = NONE then REF (t, id) else e
+	match get_symbol id with
+	| UNDEF ->
+		error_undefined id
+	| ATTR (ATTR_EXPR (_, e)) ->
+		REF (get_type_expr e, id)
+	| LET (_, t, _, _)
+	| REG (_, _, t, _)
+	| VAR (_, _, t, _)
+	| MEM (_, _, t, _)
+	| PARAM (_, TYPE_EXPR t) ->
+		REF (t, id)
+	| PARAM (_, TYPE_ID tid) ->
+		(match get_symbol tid with
+		| TYPE (_, t, _) ->
+			REF (t, id)
+		| UNDEF
+		| OR_MODE _ ->
+			REF (ANY_TYPE, id)
+		| AND_MODE (_, _, e, _)	->
+			REF (get_type_expr e, id)
+		| _ ->
+			error (asis (sprintf "invalid type for '%s'" tid)))
+	| _ ->
+		error (asis (sprintf "symbol '%s' is not a data item" id))
+
+
+(** Build a field expression.
+	@param id	Identifier of the parent entity.
+	@param fid	Field identifier.
+	@return		Expression representing the field. *)
+let make_field_expr id fid =
+
+	let rec on_name n =
+		match get_symbol n with
+		| UNDEF ->
+			error_undefined n
+		| PARAM (_, TYPE_ID t) ->
+			on_type t
+		| _ ->
+			error (fun out -> fprintf out "symbol '%s' does not support fields." id)
+	
+	(*and on_expr e =
+		match e with
+		| ELINE (f, l, e) ->
+			on_expr e
+		| REF (_, n) ->
+			on_name n
+		| _ ->
+			error (fun out -> fprintf out "symbol '%s' does not support fields." id)*)
+
+	and on_type t =
+		match get_symbol t with
+		| UNDEF ->
+			FIELDOF (ANY_TYPE, id, fid)
+		| OR_MODE _
+		| OR_OP _ ->
+			FIELDOF (ANY_TYPE, id, fid)
+		| AND_MODE (_, _, _, atts)
+		| AND_OP (_, _, atts) ->
+			(match get_attr fid atts with
+			| None ->
+				error (fun out -> fprintf out "no attribute '%s' in '%s'." fid t)
+			| Some (ATTR_EXPR (_, e)) ->
+				FIELDOF (get_type_expr e, id, fid)
+			| Some _ ->
+				error (fun out -> fprintf out "attribute '%s' in '%s' must be an expression" fid t))
+		| _ ->
+			error (fun out -> fprintf out "type '%s' does not support fields." t) in
+	
+	on_name id
 
 
 (** Decode a string according to the given type and corresponding constant.
@@ -1999,7 +2114,21 @@ let rec check_expr_inst expr =
 		| CONST _ ->
 			expr
 		| REF (t, id) ->
-			if t <> ANY_TYPE then expr else (check_expr_inst (make_ref id))
+			if t <> ANY_TYPE then expr else
+			(match get_symbol id with
+			| PARAM (_, TYPE_EXPR t) -> REF (t, id)
+			| REG (_, _, t, _)
+			| MEM (_, _, t, _)
+			| VAR (_, _, t, _)
+			| LET (_, t, _, _) ->
+				REF (t, id)
+			| ATTR (ATTR_EXPR (_, e)) ->
+				let e = check_expr_inst e in
+				assert ((get_type_expr e) <> ANY_TYPE);
+				REF (get_type_expr e, id)
+			| _ ->
+				(*error (fun out -> fprintf out "bad symbol %s" id)*)
+				failwith (sprintf "Sem: check_expr_inst REF: %s" id))
 		| COERCE (t, e) ->
 			let e' = check_expr_inst e in
 			if e == e' then expr else make_coerce t e'
@@ -2054,11 +2183,7 @@ let rec check_loc_inst loc =
 				let l1', l2' = check_loc_inst l1, check_loc_inst l2 in
 				if t <> ANY_TYPE && l1 == l1' && l2 == l2' then loc else
 				make_concat_loc l1' l2' in
-	(*assert ((get_loc_type r) <> ANY_TYPE);*)
-	if (get_loc_type r) = ANY_TYPE then
-	begin
-		assert false
-	end;
+	assert ((get_loc_type r) <> ANY_TYPE);
 	r
 
 
@@ -2069,11 +2194,16 @@ let rec check_stat_inst stat =
 	match stat with
 	| NOP
 	| EVAL _
-	| ERROR _
-	| LOCAL _ ->
+	| ERROR _ ->
 		stat
+	| LOCAL (un, on, t, i) ->
+		let i' = check_expr_inst i in
+		let t' = get_type_expr i' in
+		handle_local un t';
+		if i = i' then stat else LOCAL (un, on, t', i')
 	| SEQ (s1, s2) ->
-		let s1', s2' = check_stat_inst s1, check_stat_inst s2 in
+		let s1' = check_stat_inst s1 in
+		let s2' = check_stat_inst s2 in		
 		if s1 == s1' && s2 == s2' then stat else SEQ(s1', s2')
 	| SET (loc, expr) ->
 		let loc', expr' = check_loc_inst loc, check_expr_inst expr in
@@ -2106,6 +2236,7 @@ let check_attr_inst attr =
 		if expr == expr' then attr else ATTR_EXPR(id, expr')
 	| ATTR_STAT (id, stat) ->
 		let stat' = check_stat_inst stat in
+		clean_local ();
 		if stat == stat' then attr else ATTR_STAT(id, stat')
 	| ATTR_USES ->
 		attr
@@ -2121,12 +2252,9 @@ let check_attr_inst attr =
 let check_spec_inst spec =
 	match spec with
 	| AND_OP (id, params, attrs) ->
-		Irg.param_stack params;
-		Irg.attr_stack attrs;
-		let nattrs = List.map check_attr_inst attrs in
-		Irg.attr_unstack attrs;
-		Irg.param_unstack params;
-		AND_OP(id, params, nattrs)
+		in_spec_context spec (fun _ ->
+			let nattrs = List.map check_attr_inst attrs in
+			AND_OP(id, params, nattrs))
 	| _ -> failwith "Sem.check_spec_inst: bad specification"
 
 
@@ -2169,7 +2297,7 @@ let make_local id e =
 			local_uniq := !local_uniq + 1;
 			handle_local uid t;
 			StringHashtbl.add local_map id uid;
-			SEQ(LOCAL (uid, id, t), SET(LOC_REF (t, uid, NONE, NONE, NONE), e))
+			LOCAL (uid, id, t, e)
 		end
 
 
@@ -2220,7 +2348,7 @@ let make_typed_local id t e =
 			local_uniq := !local_uniq + 1;
 			handle_local uid t;
 			StringHashtbl.add local_map id uid;
-			SEQ(LOCAL (uid, id, t), make_set (LOC_REF (t, uid, NONE, NONE, NONE)) e)
+			LOCAL (uid, id, t, e)
 		end
 
 
@@ -2321,10 +2449,89 @@ let make_canon_expr name params =
 	CANON_EXPR(t, name, check_canon_params name params)
 
 
-(** Perform final checking on the loaded file. For now, it includes only:
-	- availability of "proc" or "NAME" string constant.
-	*)
-let final_checks () =
+(** Build an evaluation based on field pf symbols.
+	@param sname	Symbol name (possibly "" for local name).
+	@param aname	Field name. *)
+let make_eval sname aname =
+	EVAL (sname, aname)
+	(*if sname = "" then
+	
+		if not (is_defined aname)
+		then error (Irg.asis (sprintf "local attribute %s is undefined" aname))
+		else Irg.EVAL ("", aname)
+	else
+		let s = get_symbol sname in
+		if s = UNDEF
+		then error (Irg.asis (sprintf "symbol %s is undefined" sname))
+		else if not (attr_defined aname (attrs_of s))
+		then error (Irg.asis (sprintf "attribute %s of %s is undefined" aname sname))
+		else Irg.EVAL(sname, aname)*)
+
+
+(** Perform the given test on the attributes of the given
+	symbol. If the symbol is a OR and the attribute is not dofined,
+	look up in sub-symbols. 
+	@param sname	Name of the symbol.
+	@param aname	Name of the attribute.
+	@param test		Test to perform on the attribute value to bool.
+	@return			List of symbols for which the check failed. *)
+let rec lookup_attr test aname sname =
+	let s = get_symbol sname in
+	let r =
+		match get_attr aname (attrs_of s) with
+		| None -> false
+		| Some a -> test a in
+	if r then [] else
+	match s with
+	| OR_OP (_, names, _)
+	| OR_MODE (_, names, _) ->
+		List.flatten (List.map (lookup_attr test aname) names)
+	| _ ->
+		[sname]
+
+
+(** Build an expression attribute.
+	@param id	Attribute identifier.
+	@param e	Attribute expression.
+	@return		Built attribute. *)
+let make_expr_attr id e =
+	match get_symbol id with
+	| LET _
+	| TYPE _
+	| PARAM _ ->
+		error (fun out -> fprintf out "attribute '%s' hides a parameter." id)
+	| _ ->
+		let att = ATTR_EXPR (id, e) in
+		attr_env := "";
+		add_attr att;
+		att
+
+
+(** Build a statement attribute.
+	@param id	Attribute identifier.
+	@param s	Attribute statement.
+	@return		Built attribute. *)
+let make_stat_attr id s =
+	match get_symbol id with
+	| PARAM _ ->
+		error (fun out -> fprintf out "attribute '%s' hides a parameter." id)
+	| _ ->
+		let att = ATTR_STAT (id, s) in
+		attr_env := "";
+		reset_local();
+		add_attr att;
+		att
+
+
+(** Perform final checking on the loaded file. The check are performed on
+	instantiated instructions at end to resolve all OP and MODE parameters.
+	For now, it includes only:
+	- Availability of "proc" or "NAME" string constant.
+	- Existence of op/mode parameters for AND op/mode
+	- Existence of op/mode identifier in OR op/mode.
+	- Image attribute consistenct.
+	@param insts	List of instantiated instructions to test. *)
+let final_checks insts =
 	
 	(*check for "proc" or "NAME" *)
 	begin
@@ -2382,6 +2589,7 @@ let final_checks () =
 			| _ -> error_symbol id (asis (Printf.sprintf "\"%s\" should be an OR or an AND mode" name)) in
 	
 	(* check images *)
+	(* TODO Why is it here? *)
 	let string_re = Str.regexp "^[01xX \t\n]+$" in
 	let format_re = Str.regexp "^\\([01xX \t\n]\\|%s\\|%[0-9]+b\\)*$" in
 	let check_image id atts =
@@ -2418,23 +2626,137 @@ let final_checks () =
 			check_image_expr (attr_expr "image" atts NONE)
 		with PreError f ->
 			error_symbol id f in
+
+	(* check statement for well-formed eval *)
+	let rec check_eval name s =
+		let check sname aname = 
+			let l = lookup_attr is_stat_attr aname sname in
+			match l with
+			| [] ->
+				()
+			| [name] ->
+				stat_error s (fun out -> fprintf out "%s is not defined in %s" aname sname)
+			| _ ->
+				stat_error s
+					(fun out -> fprintf out "following symbols does not define %s:\n" aname;
+						List.iter (fun n -> fprintf out "  * %s\n" n) l) in
+		match s with
+		| NOP
+		| SET _
+		| CANON_STAT _
+		| ERROR _
+		| LOCAL _ ->
+			()
+		| SEQ (s1, s2)
+		| IF_STAT (_, s1, s2) ->	
+			check_eval name s1; check_eval name s2 
+		| SWITCH_STAT (_, cs, dc) ->
+			check_eval name dc;
+			List.iter (fun (_, s) -> check_eval name s) cs
+		| LINE (f, l, s) ->
+			handle_error f l (fun _ -> check_eval name s)
+		| FOR (_, _, _, _, _, s) ->
+			check_eval name s
+		| EVAL ("", name) ->
+			(match get_symbol name with
+			| UNDEF ->
+				stat_error s (fun out -> fprintf out "%s is not defined!" name)
+			| ATTR (ATTR_STAT _) ->
+				()
+			| _ ->
+				stat_error s (fun out -> fprintf out "%s should be a statement attribute!" name))
+		| EVAL (sname, aname) ->
+			match get_symbol sname with
+			| UNDEF ->
+				stat_error s (fun out -> fprintf out "%s is not defined!" sname)
+			| PARAM(_, TYPE_ID name) ->
+				check name aname
+			| _ ->
+				stat_error s (fun out -> fprintf out "%s should be a n OP or a MODE parameter" name) in
+	
+	(* check statement for well-formet format and well-resolved references*)
+	let rec check_expr e =
+		match e with
+		| REF (ANY_TYPE, i) ->
+			(match get_symbol i with
+			| PARAM (_, TYPE_ID j) ->
+				(match get_symbol j with
+				| UNDEF -> error_undefined i
+				| AND_MODE _ | OR_MODE _ | TYPE _ -> ()
+				| _ -> error (fun out -> fprintf out "parameter %s cannot be used as an expression!" i))
+			| _ -> ())
+		| FIELDOF (ANY_TYPE, i, _) -> 
+			(match get_symbol i with
+			| PARAM (_, TYPE_ID j) ->
+				(match get_symbol j with
+				| UNDEF -> error_undefined j
+				| AND_MODE _ | OR_MODE _ -> ()
+				| _ -> error (fun out -> fprintf out "parameter %s must be a MODE" i))
+			| _ -> ())
+		| NONE
+		| CANON_EXPR _
+		| CONST _
+		| REF _
+		| FIELDOF _
+		| FORMAT _ ->
+			()
+		| COERCE (_, e)
+		| ITEMOF (_, _, e)
+		| UNOP (_, _, e)
+		| CAST (_, e) ->
+			check_expr e
+		| BITFIELD (_, e, u, l) ->
+			check_expr e; check_expr u; check_expr l
+		| BINOP (_, _, e1, e2) ->
+			check_expr e1; check_expr e2
+		| IF_EXPR (_, c, t, e) ->
+			check_expr c; check_expr t; check_expr e
+		| SWITCH_EXPR (_, c, cs, d) ->
+			check_expr c; check_expr d; List.iter (fun (_, e) -> check_expr e) cs
+		| ELINE (f, l, e) ->
+			handle_error f l (fun _ -> check_expr e) in
+	
+	(* check attributes *)
+	let check_attrs spec _ =
+		let name = name_of spec in
+		List.iter
+			(fun a ->
+				match a with
+				| ATTR_STAT (_, s) ->
+					check_eval name s
+				| ATTR_EXPR (_, e) ->
+					check_expr e
+				| _ -> ())
+			(attrs_of spec) in
+	
+	(* check parameter *)
+	let check_param s (i, t) =
+		match t with
+		| TYPE_EXPR _ ->
+			()
+		| TYPE_ID j ->
+			match get_symbol j with
+			| TYPE _ -> ()
+			| AND_OP _ | AND_MODE _ | OR_OP _ | OR_MODE _ -> ()
+			| _ -> error_spec s (fun out ->
+				fprintf out "parameter %s should a type, an OP or a MODE!" i) in
 	
 	(* check modes and operations *)
-	iter (fun _ s ->
+	List.iter (fun s ->
 		match s with
-		| AND_MODE(id, pars, _, _)	-> check_and_mode id pars
-		| AND_OP (id, pars, _)		-> check_and_op id pars
-		| OR_MODE (id, names, _)	-> check_or_mode id names
-		| OR_OP (id, names, _)		-> check_or_op id names
-		| _ -> ());
+		| AND_MODE(id, pars, _, atts) ->
+			check_and_mode id pars;
+			check_image id atts;
+			List.iter (check_param s) pars
+		| AND_OP (id, pars, atts) ->
+			check_and_op id pars;
+			check_image id atts;
+			List.iter (check_param s) pars
+		| OR_MODE (id, names, _) ->
+			check_or_mode id names
+		| OR_OP (id, names, _) ->
+			check_or_op id names
+		| _ -> ()) insts;
 
-	(* check images *)
-	iter (fun _ s ->
-		match s with
-		| AND_MODE(id, _, _, atts)	-> check_image id atts
-		| AND_OP (id, _, atts)		-> check_image id atts
-		| _ -> ());
-		
-	()
-
-	
+	(* check all evaluations in attributes *)
+	List.iter (fun s -> in_spec_context s (check_attrs s)) insts

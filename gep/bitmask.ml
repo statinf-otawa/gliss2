@@ -19,6 +19,8 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  *)
 
+open Printf
+
 type bitmask =
 	(* value of the mask as a '0' '1' char only string *)
 	| BITMASK of string
@@ -575,8 +577,10 @@ let remove_space s =
 	Str.global_replace (Str.regexp "[ \t]+") "" s
 
 
-(** returns the mask of an op from its spec, the result will be a string
-with only '0' or '1' chars representing the bits of the mask *)
+(** Returns the mask of an op from its spec, the result will be a string
+	with only '0' or '1' chars representing the bits of the mask.
+	@param sp	Instruction to get mask for.
+	@return		Mask of the instruction. *)
 let get_mask sp =
 	let transform_str s =
 		let n = String.length s in
@@ -607,39 +611,31 @@ let get_mask sp =
 				(String.make (get_length_from_format d) '0') ^ (get_mask_from_regexp_list t)
 			)
 	in
+	
 	let get_expr_from_iter_value v  =
 		match v with
-		| Iter.EXPR(e) ->
-			e
-		| _ ->
-			failwith "shouldn't happen (bitmap.ml::get_string_mask_from_op::get_expr_from_iter_value)"
-	in
-	(* work only with strings with length multiple of 8, instructions have always length of 8*n bits so far *)
+		| Iter.EXPR(e) -> e
+		| _ -> failwith "Bitmask.get_mask" in
+	
+	(* BEWARE: work only with strings with length multiple of 8,
+	  instructions have always length of 8*n bits so far. *)
 	let revert_bytes s =
 		let rec aux length str =
-			if length < 8 then
-				""
-			else
-				(aux (length - 8) (String.sub str 8 (length - 8))) ^ (String.sub str 0 8)
-		in
-		if get_bit_image_order () then
-			aux (String.length s) s
-		else
-			s
-	in
-	(* !!DEBUG!! *)
-	(*let res =*)
-	BITMASK(revert_bytes (get_mask_from_regexp_list (Str.full_split (Str.regexp "%[0-9]*[bdfxs]") (remove_space (get_str (get_expr_from_iter_value (Iter.get_attr sp "image")))))))
-	(*in
-	let s = get_intern_val res in
-	Printf.printf "get_mask, [%s] (%d)\n" s (String.length s);
-	res*)
+			if length < 8 then "" else
+			(aux (length - 8) (String.sub str 8 (length - 8))) ^ (String.sub str 0 8) in
+		if get_bit_image_order () then aux (String.length s) s else s in
+	
+	let image = Iter.flatten_expr sp (get_expr_from_iter_value (Iter.get_attr sp "image")) in
+	BITMASK (revert_bytes (get_mask_from_regexp_list
+		(Str.full_split (Str.regexp "%[0-9]*[bdfxs]")
+			(remove_space (get_str image)))))
 
 
-
-
-(* returns the value of an instruction code considering only the bit set in the mask,
-the result is a '0' or '1' string with the bits not set in the mask being marked with an 'X' *)
+(** Returns the value of an instruction code considering only the bit set
+	in the mask, the result is a '0' or '1' string with the bits not set
+	in the mask being marked with an 'X'.
+	@param sp	Processed instruction.
+	@return		Corresponding mask. *)
 let get_value_mask sp =
 	let rec get_mask_from_regexp_list l =
 		match l with
@@ -674,30 +670,21 @@ let get_value_mask sp =
 		else
 			s
 	in
-	(*!DEBUG!!*)
-	(*let res =*)
+
+	let image = Iter.flatten_expr sp (get_expr_from_iter_value (Iter.get_attr sp "image")) in
 	BITMASK(revert_bytes
 		(get_mask_from_regexp_list
 			(Str.full_split (Str.regexp "%[0-9]*[bdfxs]")
-				(remove_space (get_str (get_expr_from_iter_value (Iter.get_attr sp "image")))))))
-	(*in
-	let s = get_intern_val res in
-	Printf.printf "get_value_mask, [%s] (%d)\n" s (String.length s);
-	res*)
+				(remove_space (get_str image)))))
 
 
-(* returns the value of an instruction code considering only the bit set in the mask,
-the result is a '0' or '1' string with the bits not set in the mask being discarded,
-so the result will have as many bits as the number of set bits in the mask *)
+(** Returns the value of an instruction code considering only the bit set in the mask,
+	the result is a '0' or '1' string with the bits not set in the mask being discarded,
+	so the result will have as many bits as the number of set bits in the mask. *)
 let get_value sp =
 	let vm = get_intern_val (get_value_mask sp) in
-	(*!DEBUG!!*)
-	(*let res =*)
 	BITMASK(Str.global_replace (Str.regexp "X+") "" vm)
-	(*in
-	let s = get_intern_val res in
-	Printf.printf "get_value, [%s] (%d)\n" s (String.length s);
-	res*)
+
 
 (** Print the mask.
 	@param m	Mask to print. *)

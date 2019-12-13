@@ -18,6 +18,8 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  *)
 
+open Printf
+
 (** Iter module is dedicated to the generation of instruction form the
 	IRG representation. Starting from the top-level instruction,
 	basically named "instruction", instanciates all parameters in a
@@ -33,6 +35,7 @@
 	Following function may be useful:
 	- {!build_name} gets unique C name of an instruction.
 	- {!clear_insts} remove the built instructions.
+	- {!flatten_expr} remove references and embedded formats.
 	- {!get_attr} gets attribute of a function by its name.
 	- {!get_id} returns unique integer identifier for an instruction.
 	- {!get_instruction_length} gets the length in bits of an instruction.
@@ -63,6 +66,31 @@ let print_value v =
 		Irg.print_statement s
 	| EXPR(e) ->
 		Irg.print_expr e
+
+
+(** Manage and raise an error that is not handled by the usual Irg error
+	system (usually because of the source line information loss at
+	instantiation time). Displays the disassembly of the instruction
+	to locate the error.
+	@param s	Instruction specification where the error arises.
+	@param f	Function to display the error. *)
+let error s f =
+	let r = Irg.attr_expr "syntax" (Irg.attrs_of s) Irg.NONE in
+	if r = Irg.NONE then
+		Irg.error_spec s f
+	else
+		raise (Irg.Error (fun out -> fprintf out "in %s, %t" (Irg.format_string r) f))
+
+
+(** Ensure that no PreError is issued during the execution of f.
+	In the reverse case, raise an error located in the given instruction
+	specification.
+	@param s	Current instruction.
+	@param f	Function to execute. *)
+let handle_error s f =
+	try f ()
+	with Irg.PreError f -> error s f
+
 
 (** Check if all SET or SETSPE statements in a spec are coerced if needed,
 it happens when location and rvalue have different scalar types (card or int)
@@ -328,8 +356,12 @@ let sort_instr_set instr_list stat_list =
 let enumerate_instr_sets i_l =
 
 	let is_same_i_set sp1 sp2 =
-		let a1 = try get_attr sp1 "instruction_set_select" with | Not_found -> EXPR Irg.NONE in
-		let a2 = try get_attr sp2 "instruction_set_select" with | Not_found -> EXPR Irg.NONE in
+		let a1 =
+			try get_attr sp1 "instruction_set_select"
+			with Not_found -> EXPR Irg.NONE in
+		let a2 =
+			try get_attr sp2 "instruction_set_select"
+			with Not_found -> EXPR Irg.NONE in
 		a1 = a2 in
 
 	let add_to_list l sp =
@@ -364,7 +396,8 @@ let get_insts _ =
 			if root_inst = "" then
 				instr_set := []
 			else begin
-				instr_set := List.map check_coerce (Instantiate.instantiate_instructions root_inst);
+				instr_set := Instantiate.instantiate_instructions root_inst;
+				instr_set := List.map check_coerce !instr_set;	(* TODO: redundant case: isn't it? *)
 				instr_set := List.map build_name !instr_set;
 				instr_set := List.map Sem.check_spec_inst !instr_set;
 				if !multi_set = [] then
@@ -466,57 +499,61 @@ let get_params_max_nb () =
 	  iter aux 0
 
 
+(** Flatten the given expression, that is, (a) replace references by
+	their actual value, (b) replace constant and formats inside formats.
+	@param inst		Instruction containing the expression.
+	@param e		Expression to flatten.
+	@return			Flattened expression. *)
+let flatten_expr inst e =
+	Irg.in_spec_context inst
+		(fun _ ->
+			Instantiate.remove_const_param_from_format
+				(Instantiate.simplify_format_expr e))
 
-(** returns the length of a given instruction, based on the image description *)
+
+(** Compute the length of a given instruction, based on the image
+	description.
+	@param sp	Instruction to compute size for. *)
 let get_instruction_length sp =
-	(* return the string of a given Irg.expr which is supposed to be an image attribute *)
-	let rec get_str e =
-		match e with
-		| Irg.FORMAT(str, _) -> str
-		| Irg.CONST(t_e, c) ->
-			if t_e=Irg.STRING then
-				match c with
-				Irg.STRING_CONST(str) ->
-					str
-				| _ -> ""
-			else
-				""
-		| Irg.ELINE(_, _, e) -> get_str e
-		| _ -> ""
-	in
-	let get_expr_from_iter_value v  =
-		match v with
-		| EXPR(e) -> e
-		| _ -> failwith "shouldn't happen (iter.ml::get_instruction_length::get_expr_from_iter_value)"
-	in
-	(* return the length (in bits) of an argument whose param code (%8b e.g.) is given as a string *)
-	let get_length_from_format f =
+	let remove_space s =
+		Str.global_replace (Str.regexp "[ \t]+") "" s in
+
+	let count_format f =
 		let l = String.length f in
 		let new_f =
-			if l<=2 then
-				raise (Sys_error (Printf.sprintf "forbidden format string \"%s\" in image \"%s\" for instruction \"%s\""
-					f
-					(get_str (get_expr_from_iter_value (get_attr sp "image")))
-					(get_str (get_expr_from_iter_value (get_attr sp "syntax"))) 
-				))
-			else String.sub f 1 (l-2)
-		in
-		Scanf.sscanf new_f "%d" (fun x->x)
-	in
-	(* remove any space (space or tab char) in a string, return a string as result *)
-	let remove_space s =
-		Str.global_replace (Str.regexp "[ \t]+") "" s
-	in
-	let rec get_length_from_regexp_list l =
+			if l<=2 then begin
+				Irg.error (fun out ->
+					fprintf out "format string still contains \"%s\" after instantiation" f)
+			end else
+				String.sub f 1 (l-2) in
+		Scanf.sscanf new_f "%d" (fun x->x) in
+
+	let rec count l =
 		match l with
 		| [] -> 0
-		| h::t ->
-			(match h with
-			Str.Text(txt) ->
-				(* here we assume that an image contains only %.. , 01, X or x *)
-				(String.length txt) + (get_length_from_regexp_list t)
-			| Str.Delim(d) ->
-				(get_length_from_format d) + (get_length_from_regexp_list t)
-			)
-	in
-	get_length_from_regexp_list (Str.full_split (Str.regexp "%[0-9]*[bdfxs]") (remove_space (get_str (get_expr_from_iter_value (get_attr sp "image")))))
+		| (Str.Text s)::t ->
+			(String.length s) + (count t)
+		| (Str.Delim s)::t ->
+			(count_format s) + (count t) in
+		
+	let rec lookup_format e =
+		match e with
+		| Irg.FORMAT(s, _)
+		| Irg.CONST (Irg.STRING, Irg.STRING_CONST(s))
+		| Irg.CONST (Irg.ANY_TYPE, Irg.STRING_CONST (s)) ->
+			count (Irg.split_format_string (remove_space s))
+		| Irg.ELINE(f, l, e) ->
+			Irg.handle_error f l (fun _ -> lookup_format e)
+		| _ -> 
+			Irg.error (Irg.asis "image can only be made of binary formatted strings") in
+
+	let lookup_image att =
+		match att with
+		| EXPR(e) ->
+			lookup_format (flatten_expr sp e)
+		| _ ->
+			Irg.error_spec sp (Irg.asis "image attribute should be a formatted binary string") in
+
+	handle_error sp (fun _ -> lookup_image (get_attr sp "image"))
+
+

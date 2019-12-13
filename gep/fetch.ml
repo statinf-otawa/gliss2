@@ -19,32 +19,16 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  *)
 
+open Printf
+
 (** Here is the module in charge of the generation of fetch_table.h *)
-
-(*
-  Useful list of dependencies in order to work with the interactive Ocaml toplevel :
-  (Do not forget to do make to have the latest version of the cmo binaries)
-
-  #directory "../irg";;
-  #directory "../gep";;
-
-  #load "unix.cma";;
-  #load "str.cma";;
-  #load "config.cmo";;
-  #load "irg.cmo";;
-  #load "instantiate.cmo";;
-  #load "lexer.cmo";;
-  #load "sem.cmo";;
-  #load "IdMaker.cmo";;
-  #load "iter.cmo";;
-  #load "toc.cmo";;
-*)
 
 (** Flag to output or not fetch tables stats *)
 let output_fetch_stat    = ref false
 
 (** Threshold for number of duplications of entries of an instruction opcode
-	before the PQMC support (PQMC allows grouping opcodes using X and reduce number of opcodes). *)
+	before the PQMC support (PQMC allows grouping opcodes using X and reduce number
+	of opcodes). *)
 let pqmc_threshold = Int32.of_int 64
 
 
@@ -53,7 +37,9 @@ let pqmc_threshold = Int32.of_int 64
  ********************************************************************)
 
 
-(** perform an AND between the mask of all the instrs in spec_list *)
+(** Perform an AND between the mask of all the instructions masks.
+	@param sp_list	List of instructions.
+	@return			Mask result of AND of instruction masks. *)
 let rec spec_list_mask sp_list =
 	let rec aux sl =
 	match sl with
@@ -61,13 +47,19 @@ let rec spec_list_mask sp_list =
 	| [a] -> Bitmask.get_mask a
 	| h::t ->
 		let (m1, m2) = Bitmask.set_same_length (Bitmask.get_mask h) (aux t) false in
-		Bitmask.logand m1 m2
-	in
+		Bitmask.logand m1 m2 in
 	aux sp_list
 
 
-(* "name" of the tree (list of mask int : all vals on mask beginning from the top), list of the instr, local mask, global mask (from ancestors), list of sons *)
-type dec_tree = DecTree of Bitmask.bitmask list * Irg.spec list * Bitmask.bitmask * Bitmask.bitmask * dec_tree list
+(** "Name" of the tree (list of mask int : all vals on mask beginning
+	from the top), list of the instr, local mask, global mask
+	(from ancestors), list of sons. *)
+type dec_tree = DecTree of
+	Bitmask.bitmask list *
+	Irg.spec list *
+	Bitmask.bitmask *
+	Bitmask.bitmask *
+	dec_tree list
 
 
 (** Display the given declaration tree.
@@ -125,37 +117,23 @@ let get_instr_list dt =
 		sl
 
 
-(*!!DEBUG!!*)
+(** Get the image attribute of the given specfication.
+	@param sp	Specification.
+	@return		Image attribute. *)
 let get_image sp =
 	match Iter.get_attr sp "image" with
-	| Iter.EXPR(e) -> e
-	| _ -> failwith "should not happen (fetch.ml::get_image)"
+	| Iter.EXPR(e) -> Iter.flatten_expr sp e
+	| _ -> failwith "Fetch.get_image"
 
 
 let create_son_list_of_dec_node dt =
 	let rec aux msk sl =
-		(match sl with
-		[] ->
-			(* one instr => terminal node *)
-			[]
+		match sl with
+		| [] -> []
 		| a::b ->
-			((Bitmask.masked_value (Bitmask.get_value_mask a) msk), a)::(aux msk b)
-		)
-	in
+			((Bitmask.masked_value (Bitmask.get_value_mask a) msk), a)::(aux msk b) in
 	match dt with
 	DecTree(i_l, s_l, msk, gm, dt_l) ->
-		(* !!DEBUG!! *)
-		(*Printf.printf "create_son_list_of_dec_node, msk=%s, gm=%s\n" (Bitmask.to_string msk) (Bitmask.to_string gm);
-
-		List.iter (fun a -> print_string ("creating dec_node son, val_on_mask=");
-			Printf.printf "%s, (inst_mask=%s, inst_val=%s), spec="
-				(Bitmask.to_string (Bitmask.masked_value (Bitmask.get_value_mask a) msk))
-				(Bitmask.to_string (Bitmask.get_mask a))
-				(Bitmask.to_string (Bitmask.get_value_mask a));
-			Irg.print_expr (get_image a);
-			print_char '\n')
-			s_l;*)
-
 		aux msk s_l
 
 
@@ -174,17 +152,7 @@ let sort_son_list vl =
 					a::(add_instr_in_tuple_list b (v,sp))
 			)
 	in
-	(*!!DEBUG!!*)
-	(*print_string "sort_son_list, sons to sort:\n";
-	List.iter (fun a -> Printf.printf " mask=%s, spec=" (Bitmask.to_string (fst a)); Irg.print_expr (get_image (snd a)); print_char '\n')
-		vl;
-	let res =*)
 	List.fold_left add_instr_in_tuple_list [] vl
-	(*in
-	print_string "sons sorted=[\n";
-	List.iter (fun x -> Printf.printf "v=%s\n" (Bitmask.to_string (fst x)); List.iter (fun y -> print_string "    "; Irg.print_expr (get_image y); print_char '\n') (snd x); print_string "]\n")
-		res;
-	res*)
 
 
 (*	With the result of the previous function we can build the list of dec_tree associated,
@@ -210,27 +178,24 @@ let rec build_dectrees vl msk gm il =
 	@param tr	Tree to find children for.
 	@return		List of children trees. *)
 let build_sons_of_tree tr =
-	match tr with
-	DecTree(int_l, sl, msk, gm, dt_l) ->
-		let res = build_dectrees (sort_son_list (create_son_list_of_dec_node tr)) msk gm int_l
-		in
-		if (List.length res) == 1 && (List.length (get_instr_list (List.hd res))) > 1 then
-			(output_string stderr "ERROR: some instructions seem to have same opcode:\n";
-			let expr_from_value v =
-				match v with
-				| Iter.EXPR(e) -> e
-				| _ -> failwith "should not happen (fetch.ml::build_sons_of_tree::expr_from_value)"
-			in
-			List.iter
-				(fun x ->
-					Printf.fprintf stderr "\timage=";
-					Irg.output_expr stderr (expr_from_value (Iter.get_attr x "image"));
-					Printf.fprintf stderr "\n\t\t(%s)\n" (Iter.get_user_id x))
-				(get_instr_list (List.hd res));
-			output_string stderr "\n";
-			raise (Sys_error "cannot continue with 2 instructions with same image"))
-		else
-			res
+	let DecTree(int_l, sl, msk, gm, dt_l) = tr in
+	let res = build_dectrees (sort_son_list (create_son_list_of_dec_node tr)) msk gm int_l in
+	
+	(* no ambiguity *)	
+	if (List.length res) != 1 || (List.length (get_instr_list (List.hd res))) == 1 then
+		res
+	
+	(* display ambiguous instructions *)
+	else begin
+		output_string stderr "ERROR: some instructions seem to have same opcode:\n";
+		List.iter
+			(fun x ->
+				fprintf stderr "* syntax= %s\n" (Irg.format_string (Irg.attr_expr "syntax" (Irg.attrs_of x) Irg.NONE));
+				fprintf stderr "  image = %s\n" (Irg.format_string (Irg.attr_expr "image" (Irg.attrs_of x) Irg.NONE)))
+			(get_instr_list (List.hd res));
+		output_string stderr "\n";
+		raise (Sys_error "cannot continue with 2 instructions with same image")
+	end
 
 
 (**	Build the tree to decode the instruction.
@@ -332,18 +297,13 @@ let rec output_table_C_decl fetch_size suffix out fetch_stat dt dl =
 
 	let name_of t =
 		let correct_name s =
-			if s = "" then
-				s
-			else
-				"_" ^ s
-		in
+			if s = "" then s else "_" ^ s in
 		let rec aux l s =
 			match l with
 			| [] -> s
 			| a::b ->
 				let sa = Bitmask.to_string a in
-				aux b (if (String.length s) == 0 then sa else (s ^ "_" ^ sa))
-		in
+				aux b (if (String.length s) == 0 then sa else (s ^ "_" ^ sa)) in
 		match t with
 		| DecTree(i, s, m, g, d) -> correct_name (aux i "") in
 
@@ -623,17 +583,20 @@ let remove_ranges iset =
 		| (Str.Text s)::ifmt	-> scan spec ifmt iargs (concat fmts s) args f
 		| (Str.Delim s)::ifmt	->
 			match iargs with
-			| [] -> failwith "here";
+			| [] -> failwith "Fetch.remove_ranges";
 			| iarg :: iargs ->
 				(match Irg.escape_eline iarg with
 				| Irg.REF (_, id) ->
 					(match Sem.get_type_ident id with
 					| Irg.ANY_TYPE	-> assert false
-					| Irg.RANGE (l, u)
-									-> scan spec ifmt iargs (mult fmts ((fst f) l u (Sem.image_escape_size s))) args f
-					| Irg.ENUM l	-> scan spec ifmt iargs (mult fmts ((snd f) l (Sem.image_escape_size s))) args f
-					| t 			-> scan spec ifmt iargs (concat fmts s) (iarg :: args) f)
-				| e 				-> scan spec ifmt iargs (concat fmts s) (iarg :: args) f) in
+					| Irg.RANGE (l, u) ->
+						scan spec ifmt iargs (mult fmts ((fst f) l u (Sem.image_escape_size s))) args f
+					| Irg.ENUM l ->
+						scan spec ifmt iargs (mult fmts ((snd f) l (Sem.image_escape_size s))) args f
+					| t ->
+						scan spec ifmt iargs (concat fmts s) (iarg :: args) f)
+				| e ->
+					scan spec ifmt iargs (concat fmts s) (iarg :: args) f) in
 
 	let transform id params attrs fmt args f =
 		Irg.param_stack params;
@@ -644,7 +607,9 @@ let remove_ranges iset =
 	let look res inst =
 		match inst with
 		| Irg.AND_OP (id, params, attrs) ->
-			(match (Irg.escape_eline (Irg.attr_expr "image" attrs Irg.NONE)) with
+			Irg.in_spec_context inst (fun _ ->
+			let image = Iter.flatten_expr inst (Irg.escape_eline (Irg.attr_expr "image" attrs Irg.NONE)) in
+			match image with
 			| Irg.FORMAT(fmt, args) ->
 				let (r, c) = count_ranges false Int32.one params in
 				if not r then inst::res else
@@ -665,13 +630,12 @@ let remove_ranges iset =
 	process [] iset
 
 
-(** output a table C decl, if idx >= 0 table name will be suffixed
+(** Output a table C decl, if idx >= 0 table name will be suffixed
 	@param out			Stream to output to.
 	@param sp_l			List of instructions.
 	@param fetch_size	Instruction size (in bits).
 	@param idx			Index of instruction set.
-	@param fetch_state
-	*)
+	@param fetch_state. *)
 let output_table out sp_l fetch_size idx fetch_stat =
 	let sp_l = remove_ranges sp_l in
 	let suffix = if idx < 0 then "" else ("_" ^ (string_of_int idx)) in
@@ -695,12 +659,12 @@ let output_all_table_C_decl out =
 	(*List.iter (fun x -> (output_struct_decl out (fst x) !idx); idx := !idx + 1) iss_sizes;*)
 	idx := if num_iss > 1 then 0 else -1;
 	List.iter
-		(fun x ->
+		(fun (sizes, iset) ->
 			if num_iss > 1 then
-				(Printf.fprintf out "\n/* Table set number %d */\n\n\n" !idx;
+				(fprintf out "\n/* Table set number %d */\n\n\n" !idx;
 				if !output_fetch_stat then
-					Printf.fprintf fetch_stat "Table set number %d\n" !idx);
-			output_table out (snd x) (fst x) !idx fetch_stat;
+					fprintf fetch_stat "Table set number %d\n" !idx);
+			output_table out iset sizes !idx fetch_stat;
 			idx := !idx + 1)
 		iss_sizes;
 	if !output_fetch_stat then close_out fetch_stat
@@ -711,7 +675,7 @@ let output_all_table_C_decl out =
  *************************************************)
 
 
-let test_build_dec_nodes n =
+(*let test_build_dec_nodes n =
 	match n with
 	0 ->
 		begin
@@ -741,7 +705,7 @@ let test_sort _ =
 		Printf.printf "%s\n" (name_of x)
 	in
 	print_string "let's test!\n";
-	List.iter aux dl
+	List.iter aux dl*)
 
 
 

@@ -19,6 +19,7 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  *)
 open Lexing
+open Printf
 
 
 (* (** module structure *) *)
@@ -230,7 +231,7 @@ let output_decoder_complex info inst idx sfx size is_risc out =
 		| Iter.EXPR(e) -> e
 		| _ -> Irg.NONE
 	in
-	let image_attr = get_expr_from_iter_value (Iter.get_attr inst "image") in
+	let image_attr = Iter.flatten_expr inst (get_expr_from_iter_value (Iter.get_attr inst "image")) in
 	let rec get_frmt_params e =
 		match e with
 		| Irg.FORMAT(_, params) -> params
@@ -309,7 +310,7 @@ let mask_decl_all inst is_risc out =
 		| Iter.EXPR(e) -> e
 		| _ -> Irg.NONE
 	in
-	let image_attr = get_expr_from_iter_value (Iter.get_attr inst "image") in
+	let image_attr = Iter.flatten_expr inst (get_expr_from_iter_value (Iter.get_attr inst "image")) in
 	let rec get_frmt_params e =
 		match e with
 		| Irg.FORMAT(_, params) -> params
@@ -748,10 +749,13 @@ let _ =
 		options
 		"SYNTAX: gep [options] NML_FILE\n\tGenerate code for a simulator"
 		(fun info ->
-			if !check then
+			if !check then begin
+				fprintf stderr "Just checking consistency of opcodes...\n";
 				let _ = Iter.get_insts () in
 				()
+			end
 			else
+			begin
 
 				(* check any available instruction set *)
 				if not !no_default && Iter.get_insts () = [] then
@@ -837,4 +841,5 @@ let _ =
 							"sim/Makefile"
 					with Not_found ->
 						raise (Sys_error "no template to make sim program")
+			end
 		)

@@ -1,5 +1,4 @@
 (*
- * $Id$
  * Copyright (c) 2010, IRIT - UPS <casse@irit.fr>
  *
  * This file is part of GLISS2.
@@ -21,6 +20,7 @@
 
 open Irg
 open Printf
+
 
 (**	Run nmp2nml on the given file.
 	@param file	File to run on.
@@ -110,9 +110,9 @@ let check_modes _ =
 
 
 (** Second phase type check: expressions.
-	@param e	Expression to check.
-	@return		Checked expression.
-	@raise		Irg.Error. *)
+	@param e			Expression to check.
+	@return				Checked expression.
+	@raise	Irg.Error	Semantic error. *)
 let rec check_expr e =
 	
 	let check t =

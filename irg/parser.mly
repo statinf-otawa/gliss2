@@ -21,14 +21,36 @@
  */
 
 %{
+open Printf
+
 let eline e = Irg.ELINE (!(Lexer.file), !(Lexer.line), e)
 let line s = Irg.LINE (!(Lexer.file), !(Lexer.line), s)
-
+let in_format = ref false
+let do_sanity = ref false
 
 (** Raise an error at the current parsing position.
 	@param f	Function to display error. *)
 let error f =
 		raise (Irg.Error (fun out -> Printf.fprintf out "%s:%d: " !(Lexer.file) !(Lexer.line); f out))
+
+
+(** Check if all parameters and attributes has been cleaned up after a
+	a specification.
+	@param Name of the specificiation. *)
+let sanity_check name =
+	if !do_sanity then
+		let supported_params = ["__IADDR"; "__ISIZE" ] in
+		if Irg.fold
+			(fun id s r -> r ||
+				(match s with
+				| Irg.ATTR _ ->
+					fprintf stderr "SANITY: attribute %s of %s not cleaned\n" id name; true
+				| Irg.PARAM (aid, _) when not (List.mem aid supported_params) ->
+					fprintf stderr "SANITY: parameter %s of %s not cleaned\n" id name; true
+				| _ ->
+					false))
+			false
+		then error (Irg.asis "Stopping.")
 
 
 (** Handle an expression in the parser, i.e. put source file/line information
@@ -107,8 +129,8 @@ let get_spec_extend x =
 
 (** Raise a syntax error with the given message.
 	@param m	Message of the syntax error. *)
-let syntax_error m =
-	raise (Irg.SyntaxError m)
+(*let syntax_error m =
+	raise (Irg.SyntaxError m)*)
 
 
 (** Raise illegal-keyword exception. *)
@@ -261,7 +283,7 @@ let top_endif _ =
 %%
 
 top:
-	specs EOF		{ Sem.final_checks () }
+	specs EOF		{ Sem.final_checks (Iter.get_insts()) }
 ;
 
 LocatedID:
@@ -280,13 +302,13 @@ MachineSpec :
 |   TypeSpec
 		{ Sem.add_spec (fst $1) (snd $1) }
 |   MemorySpec
-		{ Sem.add_spec (fst $1) (snd $1) }
+		{ sanity_check (fst $1); Sem.add_spec (fst $1) (snd $1) }
 |   RegisterSpec
-		{ (*Sem.add_spec (fst $1) (snd $1)*) }
+		{ sanity_check (fst $1) (*Sem.add_spec (fst $1) (snd $1)*) }
 |   ModeSpec
-		{ Sem.add_spec (fst $1) (snd $1); }
+		{ sanity_check (fst $1); Sem.add_spec (fst $1) (snd $1); }
 |   OpSpec
-		{ Sem.add_spec (fst $1) (snd $1); }
+		{ sanity_check (fst $1); Sem.add_spec (fst $1) (snd $1); }
 |   ResourceSpec
 		{ }
 |   ExceptionSpec
@@ -427,8 +449,9 @@ RegisterSpecHeader: REG LocatedID LBRACK RegPart RBRACK
 
 RegisterSpec:
 	RegisterSpecHeader OptionalMemAttrDefList
-		{ Sem.add_atts (fst $1) $2 }
+		{ Sem.add_atts (fst $1) $2; Irg.attr_unstack $2; $1 }
 ;
+
 
 VarSpec:
 	VAR LocatedID LBRACK RegPart RBRACK OptionalMemAttrDefList
@@ -462,9 +485,9 @@ MemAttrDefList:
 
 MemAttrDef:
 	VOLATILE EQ LetExpr
-		{ Irg.ATTR_EXPR ("volatile", Irg.CONST (Irg.NO_TYPE, (Sem.eval_const $3))) }
+		{ Sem.make_expr_attr "volatile" (Irg.CONST (Irg.NO_TYPE, Sem.eval_const $3)) }
 |	INITIALA EQ LetExpr
-		{ Irg.ATTR_EXPR ("init", Irg.CONST (Irg.NO_TYPE, Sem.eval_const $3)) }
+		{ Sem.make_expr_attr "init" (Irg.CONST (Irg.NO_TYPE, Sem.eval_const $3)) }
 |	PORTS EQ CARD_CONST COMMA CARD_CONST
 		{ Irg.ATTR_USES }
 |	USES EQ UsesDef
@@ -472,9 +495,9 @@ MemAttrDef:
 |	ALIAS EQ MemLocation
 		{ Irg.ATTR_LOC ("alias", $3) }
 |	ID EQ Expr
-		{ Irg.ATTR_EXPR ($1, $3) }
+		{ Sem.make_expr_attr $1 $3 }
 |	ID EQ LBRACE Sequence RBRACE
-		{ let r = Irg.ATTR_STAT ($1, $4) in Sem.reset_local(); r }
+		{ Sem.make_stat_attr $1 $4 }
 ;
 
 MemLocation:
@@ -492,7 +515,7 @@ MemLocBase:
 ;
 
 ModeSpec:
-	MODE LocatedID LPAREN ParamList RPAREN OptionalModeExpr  AttrDefList
+	MODE LocatedID LPAREN ParamList RPAREN OptionalModeExpr AttrDefList
 		{
 			Irg.param_unstack $4;
 			Irg.attr_unstack $7;
@@ -589,33 +612,35 @@ AttrDefList:
 ;
 
 NOAttrDefList:
-|	AttrDef					{ Irg.add_attr $1; [$1] }
-|	NOAttrDefList AttrDef	{ Irg.add_attr $2; $2::$1 }
+|	AttrDef					{ [$1] }
+|	NOAttrDefList AttrDef	{ $2::$1 }
 ;
 
-AttrDef :/* It is not possible to check if the ID and the attributes exits because this is used for op, in wich they can be defined later.
-		   So it must be checked at the end of parsing */
-	ID EQ Expr
-		{ Irg.ATTR_EXPR ($1, $3) }
-|	ID EQ LBRACE Sequence RBRACE
-		{ let r = Irg.ATTR_STAT ($1, $4) in Sem.reset_local (); r }
-|	SYNTAX EQ AttrExpr
-		{ Irg.ATTR_EXPR  ("syntax", (Sem.change_string_dependences "syntax" $3)) }
-|	IMAGE EQ AttrExpr
-		{ Irg.ATTR_EXPR  ("image", (Sem.change_string_dependences "image" $3)) }
-|	ACTION EQ LBRACE Sequence RBRACE
-		{ let r = Irg.ATTR_STAT ("action", $4) in Sem.reset_local (); r }
+AttrDef :/* It is not possible to check if the ID and the attributes
+			exists because this is used for op, in wich they can be
+			defined later. So it must be checked at the end of parsing */
+	AttrID EQ Expr
+		{ Sem.make_expr_attr $1 $3 }
+|	AttrID EQ LBRACE Sequence RBRACE
+		{ Sem.make_stat_attr $1 $4 }
+|	AttrID EQ error
+		{ raise (Irg.SyntaxError "attributes only accept expressions, { } actions or use clauses.") }
+|	AttrID error
+ 		{ raise (Irg.SyntaxError "missing '=' in attribute definition") }
 |	USES EQ UsesDef
 		{ Irg.ATTR_USES }
-|	ID EQ error
-		{ raise (Irg.SyntaxError "attributes only accept expressions, { } actions or use clauses.") }
-|	ID error
- 		{ raise (Irg.SyntaxError "missing '=' in attribute definition") }
 ;
 
-AttrExpr :
-|	Expr
-		{ eline $1 }
+AttrID:
+	SYNTAX
+		{ Sem.attr_env := "syntax"; !Sem.attr_env }
+|	IMAGE
+		{ Sem.attr_env := "image"; !Sem.attr_env }
+
+|	ACTION
+		{ Sem.attr_env := "action"; !Sem.attr_env }
+|	ID
+		{ Sem.attr_env := $1; !Sem.attr_env }
 ;
 
 
@@ -633,23 +658,23 @@ StatementList:
 
 Statement:
 	/* empty */
-		{ Irg.NOP }
+		{ line Irg.NOP }
 |	ACTION
-		{ Irg.EVAL ("", "action") }
+		{ handle_stat (fun _ -> Sem.make_eval "" "action") }
 |	ID
-		{ Irg.EVAL ("", $1) }
+		{ handle_stat (fun _ -> Sem.make_eval "" $1) }
 |	ID LPAREN
 		{ raise (Irg.SyntaxError (Printf.sprintf "unreduced macro '%s'" $1)) }
 |	ID DOT ACTION
-		{ Irg.EVAL ($1, "action")  }
+		{ handle_stat (fun _ -> Sem.make_eval $1 "action") }
 |	ID DOT ID
-		{ Irg.EVAL ($1, $3) }
+		{ handle_stat (fun _ -> Sem.make_eval $1 $3) }
 |	Location EQ Expr
 		{ handle_stat (fun _ -> Sem.make_set $1 $3) }
 |	ConditionalStatement
 		{ $1 }
 |	STRING_CONST LPAREN ArgList RPAREN
-		{ Sem.test_canonical $1; Sem.build_canonical_stat $1 (List.rev $3) }
+		{ handle_stat (fun _ -> Sem.test_canonical $1; Sem.build_canonical_stat $1 (List.rev $3)) }
 |	ERROR LPAREN STRING_CONST RPAREN
 		{ handle_stat (fun _ -> Irg.ERROR $3) }
 |	LET ID EQ Expr
@@ -731,34 +756,39 @@ Default:
 	DEFAULT COLON Sequence {$3}
 ;
 
+EnterFormat:
+	/* emtpy */
+		{ in_format := true; }
+;
+
+
+LeaveFormat:
+	/* empty */
+		{ in_format := false; }
+;
+
 
 Expr:
 	COERCE LPAREN Type COMMA Expr RPAREN
 		{ handle_expr (fun _ -> Sem.make_coerce $3 $5) }
 |	COERCE error
 		{ syntax_error "syntax error in coerce expression" }
-|	FORMAT LPAREN STRING_CONST COMMA ArgList RPAREN
-		{ eline (Sem.build_format $3 $5) }
+|	FORMAT LPAREN STRING_CONST COMMA EnterFormat ArgList RPAREN LeaveFormat
+		{ eline (Sem.build_format $3 $6 !Sem.attr_env) }
 |	FORMAT error
 		{ syntax_error "syntax error in format expression" }
 |	STRING_CONST LPAREN ArgList RPAREN
 		{ eline (Sem.make_canon_expr $1 (List.rev $3)) }
 |	ID DOT SYNTAX
-		{	if Irg.is_defined $1
-			then eline (Irg.FIELDOF (Irg.STRING, $1,"syntax"))
-			else error (Irg.asis (Printf.sprintf "the keyword %s is undefined\n" $1)) }
+		{ eline (Sem.make_field_expr $1 "syntax") }
 |	ID DOT IMAGE
-		{	if Irg.is_defined $1
-			then eline (Irg.FIELDOF (Irg.STRING, $1,"image"))
-			else error (Irg.asis (Printf.sprintf "the keyword %s is undefined\n" $1)) }
+		{ eline (Sem.make_field_expr $1 "image") }
 |	ID DOT ID
-		{ eline (Irg.FIELDOF(Sem.type_of_field $1 $3, $1, $3)) }
+		{ eline (Sem.make_field_expr $1 $3) }
 |	Expr DOUBLE_COLON Expr
-		{
-			eline (Sem.get_binop $1 $3 Irg.CONCAT)
-		}
+		{ eline (Sem.get_binop $1 $3 Irg.CONCAT) }
 |	ID
-		{ handle_expr (fun _ -> Sem.make_ref (Sem.unalias_local $1)) }
+		{ handle_expr (fun _ -> Sem.make_ref $1) }
 |	ID LPAREN
 		{ raise (Irg.SyntaxError "unreduced macro here") }
 |	ID LBRACK Expr RBRACK

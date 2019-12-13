@@ -190,23 +190,36 @@ let collect info =
 		
 	let rec collect_stat stat (c, lst) (line: string * int) =
 		match stat with
-			| Irg.NOP						-> (c, lst)
-			| Irg.LOCAL (v, _, t)			-> Irg.handle_local v t; (c, lst)
-			| Irg.SEQ (s1, s2) 				-> collect_stat s2 (collect_stat s1 (c, lst) line) line
-			| Irg.EVAL ("", id) 			-> (c, collect_call id lst)
-			| Irg.EVAL _ 					-> failwith "gliss-used-regs: collect_stat"
-			| Irg.SET (l, e) 				-> (c, collect_loc l (c, scan c e lst line) line)
-			| Irg.CANON_STAT ("//no_collect_regs", _)	-> (false, lst)
-			| Irg.CANON_STAT ("//do_collect_regs", _)	-> (true, lst)
-			| Irg.CANON_STAT (_, args)		-> (c, List.fold_left (fun l e -> scan c e l line) lst args)
-			| Irg.ERROR _					-> (c, lst)
-			| Irg.IF_STAT (cd, t, e)		-> (c, snd (collect_stat t (collect_stat e (c, scan c cd lst line) line) line))
-			| Irg.SWITCH_STAT (cd, cs, d)	->
+			| Irg.NOP ->
+				(c, lst)
+			| Irg.LOCAL (v, _, t, i) ->
+				Irg.handle_local v t; (c, scan c i lst line)
+			| Irg.SEQ (s1, s2) ->
+				collect_stat s2 (collect_stat s1 (c, lst) line) line
+			| Irg.EVAL ("", id) ->
+				(c, collect_call id lst)
+			| Irg.EVAL _ ->
+				failwith "gliss-used-regs: collect_stat"
+			| Irg.SET (l, e) ->
+				(c, collect_loc l (c, scan c e lst line) line)
+			| Irg.CANON_STAT ("//no_collect_regs", _) ->
+				(false, lst)
+			| Irg.CANON_STAT ("//do_collect_regs", _) ->
+				(true, lst)
+			| Irg.CANON_STAT (_, args) ->
+				(c, List.fold_left (fun l e -> scan c e l line) lst args)
+			| Irg.ERROR _ ->
+				(c, lst)
+			| Irg.IF_STAT (cd, t, e) ->
+				(c, snd (collect_stat t (collect_stat e (c, scan c cd lst line) line) line))
+			| Irg.SWITCH_STAT (cd, cs, d) ->
 				(c, snd (List.fold_left
 					(fun l (_, s) -> collect_stat s l line) (collect_stat d (c, scan c cd lst line) line)
 					cs))
-			| Irg.LINE (f, l, s)			-> collect_stat s (c, lst) (f, l)
-			| Irg.FOR (v, uv, t, l, u, b)	-> collect_stat b (c, lst) line
+			| Irg.LINE (f, l, s) ->
+				collect_stat s (c, lst) (f, l)
+			| Irg.FOR (v, uv, t, l, u, b) ->
+				collect_stat b (c, lst) line
 
 		and unalias id idx lst (line: string * int) =
 			match Irg.get_symbol id with

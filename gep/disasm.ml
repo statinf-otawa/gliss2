@@ -19,6 +19,8 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  *)
 
+open Irg
+open Printf
 exception CommandError of string
 
 (* library path *)
@@ -95,6 +97,10 @@ let rec gen_disasm info inst expr =
 	let sprintf = "__buffer += sprintf" in
 	let sformat = Irg.CONST(Irg.STRING, Irg.STRING_CONST "%s") in
 
+	let bad_expr e =
+		Irg.error (fun out -> fprintf out "bad syntax expression in instruction %s: %a"
+			(Iter.get_user_id inst) Irg.output_expr e) in
+
 	let rec scan fmt args cfmt cargs =
 		match fmt with
 		| []
@@ -121,9 +127,21 @@ let rec gen_disasm info inst expr =
 			Irg.SWITCH_STAT(c, List.map (fun (c, e) -> (c, process e)) cases,if def <> Irg.NONE then process def else Irg.NOP)
 		| Irg.CANON_EXPR _ ->
 			Irg.CANON_STAT(sprintf, [buffer; sformat; expr])
-		| Irg.REF _
+		| Irg.ELINE (f, l, e) ->
+			Irg.handle_error f l (fun _ -> gen_disasm info inst e)
+		| Irg.REF (_, id) ->
+			(match Irg.get_symbol id with
+			| ATTR (ATTR_EXPR (_, e)) -> process e
+			| _ -> bad_expr expr)
+		| Irg.FIELDOF (t, cid, fid) ->
+			(match Irg.get_symbol cid with
+			| ATTR (ATTR_EXPR (_, e)) ->
+				(match escape_eline e with
+				| REF (_, id) -> process (FIELDOF(t, id, fid))
+				| _ -> bad_expr expr)
+			| _ ->
+				bad_expr expr)
 		| Irg.NONE
-		| Irg.FIELDOF _
 		| Irg.ITEMOF _
 		| Irg.BITFIELD _
 		| Irg.UNOP _
@@ -131,14 +149,13 @@ let rec gen_disasm info inst expr =
 		| Irg.CONST _
 		| Irg.COERCE _
 		| Irg.CAST _ ->
-			Toc.error_on_expr (Printf.sprintf "bad syntax expression in instruction %s" (Iter.get_user_id inst)) expr
-		| Irg.ELINE (file, line, e) ->
-			Toc.locate_error file line (gen_disasm info inst) e
+			bad_expr expr
 
 	and check_symbol id =
 		match Irg.get_symbol id with
-		| Irg.REG _ | Irg.MEM _ -> Toc.error_on_expr (Printf.sprintf "\"%s\" forbidden in syntax attribute" id) expr
-		| Irg.LET _ | Irg.PARAM _  | _ -> ()
+		| REG _ | MEM _ ->
+			error (fun out -> fprintf out "\"%s\" forbidden in syntax attribute: %a" id output_expr expr)
+		| LET _ | Irg.PARAM _  | _ -> ()
 
 	and check expr =
 		match expr with

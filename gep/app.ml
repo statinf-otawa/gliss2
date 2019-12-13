@@ -19,6 +19,8 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  *)
 
+open Printf
+
 module OrderedType =
 struct
 	type t = Toc.c_type
@@ -352,13 +354,13 @@ let get_instruction_set maker f dict i_set =
 		(* as described in nmp attr "instruction_set_name" *)
 		("iset_name", Templater.TEXT (fun out ->
 			let spec_ = List.hd i_set in
-			let name = try
-					match Iter.get_attr spec_ "instruction_set_name" with
-					| Iter.EXPR((Irg.CONST(Irg.STRING, Irg.STRING_CONST(n)))) -> n
-					| _ -> raise (Toc.Error "attribute 'instruction_set_name' must be a constant string")
-				with Not_found ->
-					if (List.length !Iter.multi_set) > 1 then raise (Toc.Error "no attribute 'instruction_set_name'")
-					else Irg.get_proc_name ()  in
+			let att = Irg.attr_expr "instruction_set_name" (Irg.attrs_of spec_) Irg.NONE in
+			let name = match Irg.as_const_string att with
+				| Some name -> name
+				| None ->
+					if (List.length !Iter.multi_set) > 1
+					then Irg.error_spec spec_ (Irg.asis "no attribute 'instruction_set_name'")
+					else Irg.get_proc_name () in
 			output_string out name)) ::
 		("min_size", Templater.TEXT (fun out -> Printf.fprintf out "%d" min_size)) ::
 		dict))
