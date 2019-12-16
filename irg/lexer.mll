@@ -140,10 +140,17 @@ let display_error msg = output_error stderr msg
 let current_loc _ = Printf.sprintf "%s:%d:%d" !file !line (get_col ())
 
 
+(** Display as a warning the message produced by the given function.
+	@param f	Function to produce the display. *)
+let warn f =
+	Printf.fprintf stderr "WARNING: %s:%d:%d: %t\n" !file !line (get_col ()) f
+
+
 (** warning management
 	@param msg		Message to display. *)
-let display_warning msg=
-	Printf.fprintf stderr "WARNING: %s:%d:%d: %s\n" !file !line (get_col ()) msg
+let display_warning msg =
+	warn (fun out -> output_string out msg)
+
 
 (* Lexing add-ons *)
 let rec dotdot lexbuf i found =
