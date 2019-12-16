@@ -2521,10 +2521,8 @@ let rec lookup_attr test aname sname =
 	@return		Built attribute. *)
 let make_expr_attr id e =
 	match get_symbol id with
-	| LET _
-	| TYPE _
 	| PARAM _ ->
-		error (fun out -> fprintf out "attribute '%s' hides a parameter." id)
+		error (fun out -> fprintf out "attribute '%s' hides a global symbol." id)
 	| _ ->
 		let att = ATTR_EXPR (id, e) in
 		attr_env := "";
