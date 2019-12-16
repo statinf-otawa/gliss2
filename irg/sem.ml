@@ -180,8 +180,10 @@ let get_type_length t =
 	| FIX (n,m) -> n + m
 	| FLOAT (n,m) -> n + m
 	| ENUM l ->
-		let i = List.length l in
-		int_of_float (ceil ((log (float i)) /. (log 2.)))
+		let m = List.fold_left
+			(fun x y -> if Int32.compare x y > 0 then x else y)
+			Int32.one l in
+		int_of_float (floor ((log (Int32.to_float m)) /. (log 2.))) + 1
 	| RANGE (l, u) ->
 		if (Int32.compare l Int32.zero) >= 0 then bits_for u else
 		let l = Int32.abs l in
@@ -958,7 +960,6 @@ let to_card e =
 	@raise Failure	Raised when the type of the operands are not compatible with the operation
 *)
 let rec get_concat e1 e2 =
-	(* TODO convert arguments to card *)
 	try
 		let length = (get_length_from_expr e1) + (get_length_from_expr e2) in
 		Irg.BINOP (CARD length, CONCAT, to_card e1, to_card e2)
@@ -1931,17 +1932,41 @@ let make_coerce t expr =
 	@return				Built expression.
 	@raise Irg.PreError	If error. *)
 let make_bitfield base up lo =
+	let check_bounds uc lc l =
+		if uc >= l then Lexer.warn
+			(fun out -> fprintf out "first bound (%d) is bigger than base size (%d)" uc l);
+		if lc >= l then Lexer.warn
+			(fun out -> fprintf out "second bound (%d) is bigger than base size (%d)" lc l) in
+
+	let t = get_type_expr base in
 	try
-		let v1 = Int32.to_int (to_int32 (eval_const up)) in
-		let v2 = Int32.to_int (to_int32 (eval_const lo)) in
-		let v1, v2 = if v1 <= v2 then v1, v2 else v2, v1 in
-		(* !!TODO!! check type (only scalar allowed) and length if possible *)
-		begin
-			let r = BITFIELD (CARD (v2 - v1 + 1), base, up, lo) in
-			r
-		end
+		let uc = Int32.to_int (to_int32 (eval_const up)) in
+		let lc = Int32.to_int (to_int32 (eval_const lo)) in
+		if uc < 0 then Lexer.warn (asis "first bound must be positive!");
+		if lc < 0 then Lexer.warn (asis "second bound must be positive!");
+		match t with
+		| NO_TYPE ->
+			failwith "Sem.make_bit_field"
+		| ANY_TYPE ->
+			BITFIELD (CARD (abs(uc - lc) + 1), base, up, lo)
+		| CARD _
+		| INT _ ->
+			check_bounds uc lc (get_type_length t);
+			BITFIELD (CARD (abs(uc - lc) + 1), base, up, lo)
+		| FLOAT _
+		| RANGE _
+		| BOOL
+		| ENUM _
+		| FIX _ ->
+			let l = get_type_length t in
+			let t = CARD(l) in
+			let base = CAST(t, base) in
+			check_bounds uc lc l;
+			BITFIELD (CARD (abs(uc - lc) + 1), base, up, lo)
+		| STRING ->
+			error (asis "bitfield operator cannot be used with strings.")
 	with PreError _ ->
-		BITFIELD (get_type_expr base, base, up, lo)
+		BITFIELD (t, base, up, lo)
 
 
 (** Build an IF expression.
@@ -2760,3 +2785,15 @@ let final_checks insts =
 
 	(* check all evaluations in attributes *)
 	List.iter (fun s -> in_spec_context s (check_attrs s)) insts
+
+
+(** Build the ordered list of enumerated values. Check also to ensure
+	they are positive.
+	@param vs		Tested values.
+	@return			Ordered values.
+	@throw PreError	If there is an error. *)
+let make_enum_values vs =
+	let vs = uniq (List.sort Int32.compare vs) in
+	if (Int32.compare (List.hd vs) Int32.zero) < 0
+	then error (fun out -> fprintf out "negative values forbidden in enumerated");
+	vs

@@ -424,7 +424,7 @@ TypeExpr:
 						(Int32.to_int v1) (Int32.to_int v2))])
 		 }
 |	ENUM LPAREN ValueList RPAREN
-		{ Irg.ENUM (Sem.uniq (List.sort Int32.compare $3)) }
+		{ Irg.ENUM (Sem.make_enum_values $3) }
 ;
 
 ValueList:	Value						{ $1 }
