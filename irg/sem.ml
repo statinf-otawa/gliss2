@@ -2795,3 +2795,4 @@ let make_enum_values vs =
 	if (Int32.compare (List.hd vs) Int32.zero) < 0
 	then error (fun out -> fprintf out "negative values forbidden in enumerated");
 	vs
+	

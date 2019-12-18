@@ -10,6 +10,7 @@ endif
 # libgep build
 LIBGEP_SOURCES=\
 	bitmask.ml \
+	opti.ml \
 	toc.ml \
 	templater.mll \
 	app.ml \
