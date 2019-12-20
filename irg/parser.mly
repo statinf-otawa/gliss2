@@ -664,7 +664,7 @@ Statement:
 |	ID
 		{ handle_stat (fun _ -> Sem.make_eval "" $1) }
 |	ID LPAREN
-		{ raise (Irg.SyntaxError (Printf.sprintf "unreduced macro '%s'" $1)) }
+		{ syntax_error (Printf.sprintf "unreduced macro '%s'" $1) }
 |	ID DOT ACTION
 		{ handle_stat (fun _ -> Sem.make_eval $1 "action") }
 |	ID DOT ID
@@ -681,6 +681,8 @@ Statement:
 		{ handle_stat (fun _ -> Sem.make_local $2 $4) }
 |	LET ID COLON Type EQ Expr
 		{ handle_stat (fun _ -> Sem.make_typed_local $2 $4 $6) }
+|	LET ID error
+		{ syntax_error "syntax error: let [: type] = expression;" }
 |	ForHeader DO Sequence ENDDO
 		{ handle_stat (fun _ -> Sem.make_for $1 $3) }
 ;
