@@ -111,18 +111,35 @@ let intersect_attrs attrs1 attrs2 =
 	List.fold_left (fun res attr -> if member_of attr attrs2 then attr::res else res) [] attrs1
 
 
+(** Join two extension descriptions (names, parameters, attributes).
+	@param e1	First extension description.
+	@param e2	Second extension description.
+	@return		Joined extension description. *)
+let join_extend e1 e2 =
+	let (i1, p1, a1) = e1 in
+	let (i2, p2, a2) = e2 in
+	(i1 @ i2, intersect_params p1 p2, intersect_attrs a1 a2)
+
+
+(** Null extension description. *)
+let null_extend = ([], [], [])
+
+
 (** Get information to extend the symbol x.
 	@param x				Name of the symbol to extend (must an AND-op or an AND-mode).
 	@return					(specification of the symbol, list of parameters, list of attributes)
 	@raise Irg.Error		If the symbol is not extensible. *)
-let get_spec_extend x =
+let rec get_spec_extend x =
 	let sym = Irg.get_symbol x in
 	match sym with
-	| Irg.AND_MODE (_, pars, _, attrs)
-	| Irg.AND_OP (_, pars, attrs) ->
-		(sym, pars, attrs)
 	| Irg.UNDEF ->
 		Irg.error (Irg.asis (Printf.sprintf "symbol %s does not exists" x))
+	| Irg.AND_MODE (_, pars, _, attrs)
+	| Irg.AND_OP (_, pars, attrs) ->
+		([sym], pars, attrs)
+	| Irg.OR_OP (_, xs, atts)
+	| Irg.OR_MODE (_, xs, atts) ->
+		List.fold_left (fun e x -> join_extend e (get_spec_extend x)) null_extend xs 
 	| _ ->
 		Irg.error (Irg.asis (Printf.sprintf "can not extend %s" x))
 
@@ -569,19 +586,16 @@ ExtendSpec:
 
 
 ExtendHeader:
-	EXTEND ExtendIDList	{ let (_, pars, attrs) = $2 in Irg.attr_stack attrs; Irg.param_stack pars; $2 }
+	EXTEND ExtendIDList
+		{ let (_, pars, attrs) = $2 in Irg.attr_stack attrs; Irg.param_stack pars; $2 }
 ;
 
 
 ExtendIDList:
 	ID
-		{ let (sym, pars, attrs) = get_spec_extend $1 in ([sym], pars, attrs) }
+		{ get_spec_extend $1 }
 |	ExtendIDList COMMA ID
-		{
-			let (sym, spars, sattrs) = get_spec_extend $3 in
-			let (syms, pars, attrs) = $1 in
-			(sym::syms, intersect_params pars spars, intersect_attrs sattrs attrs)
-		}
+		{ join_extend (get_spec_extend $3) $1 }
 ;
 /**/
 

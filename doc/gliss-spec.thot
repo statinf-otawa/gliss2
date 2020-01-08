@@ -461,3 +461,59 @@ endif]
 ...
 </code>
 
+
+===== Attribute extension =====
+
+It is sometimes convenient to assign attributes to specification in 
+different NMP files to manage different use aspects of the instructions.
+For instance, in the main NMP description, the instructions described
+with basic attributes like ''syntax'', ''image'' and ''action''. In a
+different file dedicated to control flow analysis, we want to describe
+which instruction are branches and what is the target in thise case.
+
+The instructions can be description in the file ''isa.nmp'':
+<code>
+op ADD(d: GPR, a: GPR, b: GPR)
+	...
+
+op BRANCH(offset: int(16))
+	...
+	action = { PC = PC + offset << 2; }
+
+op CALL(offset: int(16))
+	...
+	action = { LR = PC; PC = PC + offset << 2; }
+</code>
+
+In a different file or lately, using the ''extend'' keyword, GLISS2
+can define new attributes ''is_branch'' and ''target'' as illustrated in
+the sample below:
+<code>
+extend ADD
+	is_target = 0
+
+extend BRANCH, CALL
+	is_target = 1
+	target = __IADDR__ + offset << 2
+</code>
+
+The ''extend'' keyword allows to assign an attribute to one or several
+specification after the definition of the specification itself or in
+a different file. The syntax follows:
+<code>
+ExtendSpec ::= 'extend'  Identifier (',' Identifier)* Attributes
+</code>
+
+The same set of attributes is assigned to all listed operation and mode
+specifications. The expressions and statements in the attributes can
+refer to symbols (parameters and attributes) of the corresponding operations
+and mode but only to the ones that are common to all specifications
+(same name and type for parameters, same name for attributes).
+
+If an identifier concernes an OR operation or mode, the attributes are
+applied to the list of specification of the OR definition.
+
+
+
+
+
