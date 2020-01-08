@@ -806,7 +806,7 @@ Expr:
 |	ID
 		{ handle_expr (fun _ -> Sem.make_ref $1) }
 |	ID LPAREN
-		{ raise (Irg.SyntaxError "unreduced macro here") }
+		{ raise (Irg.SyntaxError (Printf.sprintf "unreduced macro %s here" $1)) }
 |	ID LBRACK Expr RBRACK
 		{
 		let id = Sem.unalias_local $1 in
