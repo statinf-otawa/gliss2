@@ -776,7 +776,8 @@ let rec seq_list list =
 	@param stats		List of statements to extend.
 	@return				(required statements, unaliased expression) *)
 let rec unalias_ref info expr stats =
-	let unalias name idx typ unalias_mem =
+	
+	let unalias stats name idx typ unalias_mem =
 		match Irg.get_symbol name with
 		(* IRg.MEM added makes everything goes badly (with ppc2 and arm at least) *)
 		| Irg.REG _ ->
@@ -794,13 +795,14 @@ let rec unalias_ref info expr stats =
 			prepare_expr info stats e
 		| _ ->
 			(stats, expr) in
+	
 	match expr with
 	| Irg.REF (_, name) ->
 		(* if mem ref, leave it this way, it surely is a parameter for a canonical *)
-		unalias name Irg.NONE Irg.BOOL false
+		unalias stats name Irg.NONE Irg.BOOL false
 	| Irg.ITEMOF (typ, tab, idx) ->
 		let (stats, idx) = prepare_expr info stats idx in
-		unalias tab idx typ true
+		unalias stats tab idx typ true
 	| _ -> failwith "toc:unalias_ref"
 
 
@@ -827,7 +829,8 @@ and prepare_expr info stats expr =
 		(stats, Irg.CANON_EXPR (typ, name, List.rev args))
 	| Irg.FIELDOF (typ, base, id) ->
 		(stats, Irg.FIELDOF (typ, base, id))
-	| Irg.ITEMOF (typ, tab, idx) -> unalias_ref info expr stats
+	| Irg.ITEMOF (typ, tab, idx) ->
+		unalias_ref info expr stats
 	| Irg.BITFIELD (typ, expr, lo, up) ->
 		let (stats, expr) = prepare_expr info stats expr in
 		let (stats, lo) = prepare_expr info stats lo in
@@ -999,13 +1002,16 @@ let rec prepare_stat info stat =
 	| Irg.NOP
 	| Irg.ERROR _ ->
 		stat
+
 	| Irg.SEQ (s1, s2) ->
 		let s1 = prepare_stat info s1 in
 		let s2 = prepare_stat info s2 in
 		Irg.SEQ (s1, s2)
+
 	| Irg.SET (loc, expr) ->
 		let (stats, expr) = prepare_expr info Irg.NOP expr in
 		prepare_set stats loc expr
+
 	| Irg.CANON_STAT (name, args) ->
 		let (stats, args) = prepare_exprs info Irg.NOP args in
 		seq stats (Irg.CANON_STAT (name, List.rev args))

@@ -71,6 +71,7 @@ void usage(const char *prog_name) {
 			"  -start=<hexa_address> : simulation start address (default symbol _start)\n"
 			"  -t time               : stop the simulation after time seconds\n"
 			"  -v, -verbose          : display simulated instructions\n"
+			"  -V, -valid[=path]     : output states for valdation (in given file)\n"
 			"\n"
 			"if args or env strings must be passed to the simulated program,\n"
 			"put them in <exec_name>.argv or <exec_name>.envp,\n"
@@ -542,6 +543,8 @@ int main(int argc, char **argv) {
     int profile = 0;
     int fast_sim = 0;
     int more_stat = 0;
+    int valid = 0;
+	const char *valid_path = NULL;
 	uint64_t inst_cnt = 0;
 	uint64_t start_time=0, end_time, delay = 0;
 	uint64_t start_sys_time=0, end_sys_time, sys_delay = 0;
@@ -614,6 +617,18 @@ int main(int argc, char **argv) {
 				return 2;
 			}
 			time = strtoul(argv[i], NULL, 10);
+		}
+
+        /* -p or -profile=<path> option */
+        else if(strcmp(argv[i], "-V") == 0 || strcmp(argv[i], "-valid") == 0)
+			valid = 1;
+		else if(strncmp(argv[i], "-V=", 3) == 0) {
+			valid = 1;
+			valid_path = argv[i] + 3;
+		}
+		else if(strncmp(argv[i], "-valid=", 7) == 0) {
+			valid = 1;
+			valid_path = argv[i] + 7;
 		}
 
 		/* option ? */
@@ -773,7 +788,7 @@ int main(int argc, char **argv) {
 #	endif
 
 	/* full speed simulation */
-    if(!verbose && !profile)
+    if(!verbose && !profile && !valid)
     {
 
 			if(fast_sim)
@@ -794,23 +809,39 @@ int main(int argc, char **argv) {
 	else
 	{
         gliss_inst_t *inst;
-        while(!gliss_is_sim_ended(sim))
-		{
+		FILE *vout = stderr;
+
+		/* prepare validation output */
+        if(valid) {
+			if(valid_path != NULL) {
+				vout = fopen(valid_path, "w");
+				if(vout == NULL) {
+					fprintf(stderr, "ERROR: %s cannot be opened!\n", valid_path);
+					exit(EXIT_FAILURE);
+				}
+			}
+			gliss_output_header_valid(vout);
+		}
+
+		/* perform the simulation */
+        while(!gliss_is_sim_ended(sim)) {
             inst = gliss_next_inst(sim);
             if( profile )
-            {
                 inst_stat[inst->ident]++;
-            }
-
-            if(verbose)
-            {
+            if(verbose) {
                 gliss_disasm(buffer, inst);
                 fprintf(stderr, "%08x: %s\n", gliss_next_addr(sim),  buffer);
             }
+            if(valid)
+				gliss_output_state_valid(state, vout);
             gliss_free_inst(inst);
             gliss_step(sim);
 			inst_cnt++;
 		}
+		
+		/* close the valid output */
+		if(vout != stderr)
+			fclose(vout);
 	}
 
 	/* produce statistics */

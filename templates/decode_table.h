@@ -106,7 +106,7 @@ $(predecode)
 $(end)$(end)
 
 
-typedef $(if !GLISS_NO_MALLOC)$(proc)_inst_t *$(else)void $(end)$(proc)_decode_function_t($(code_read_param_decl)code_inst$(if GLISS_NO_MALLOC), $(proc)_inst_t *inst$(end));
+typedef $(if !GLISS_NO_MALLOC) $(proc)_inst_t *$(else) void $(end)$(proc)_decode_function_t($(code_read_param_decl)code_inst$(if GLISS_NO_MALLOC), $(proc)_inst_t *inst$(end));
 
 static $(proc)_decode_function_t *$(proc)_decode_table[] =
 {

@@ -110,36 +110,77 @@ let format_date date =
 		tm.Unix.tm_hour tm.Unix.tm_min tm.Unix.tm_sec
 
 
+(** Evaluate an expression in the context of the given speficiation.
+	@param info		Current generation information.
+	@param spec		Container specification.
+	@param out		Current output.
+	@param e		Expression to evaluate. *)
+let eval_expr info spec out e =
+	Irg.in_spec_context spec
+		(fun _ -> 
+			let (s, e) = Toc.prepare_expr info Irg.NOP e in
+			Toc.declare_temps info;
+			Toc.gen_stat info s;
+			Toc.gen_expr info e true;
+			output_string info.Toc.out "\n")
+
+
+(** Generate the pre-statemet of an expression.
+	@param info		Current generation information.
+	@param spec		Container specification.
+	@param out		Current output.
+	@param e		Expression to evaluate. *)
+let gen_pre_expr info spec out e =
+	Irg.in_spec_context spec
+		(fun _ -> 
+			let (s, e) = Toc.prepare_expr info Irg.NOP e in
+			Toc.declare_temps info;
+			Toc.gen_stat info s;
+			Toc.cleanup_temps info)
+
+
+(** Generate the expression alone.
+	@param info		Current generation information.
+	@param spec		Container specification.
+	@param out		Current output.
+	@param e		Expression to evaluate. *)
+let gen_expr info spec out e =
+	Irg.in_spec_context spec
+		(fun _ -> 
+			Toc.gen_expr info e true;
+			Toc.cleanup_temps info)
+
+
+(** Evaluate a statement in the context of the given speficiation.
+	@param info		Current generation information.
+	@param spec		Container specification.
+	@param out		Current output.
+	@param s		Statement to evaluate. *)
+let eval_stat info spec out s =
+	Irg.in_spec_context spec
+		(fun _ -> 
+			let s = Toc.prepare_stat info s in
+			Toc.declare_temps info;
+			Toc.gen_stat info s;
+			Toc.cleanup_temps info)
+
+
 (** Evaluates an attribute by its name inside an instruction.
-	@param inst		Current instruction.
+	@param spec		Current instruction.
 	@param out		Output channel.
 	@param arg		Argument: ID or ID:DEFAULT. *)
-let eval_attr info inst out arg =
+let eval_attr info spec out arg =
 	let id, def =
 		try
 			let p = String.index arg ':' in
 			(String.sub arg 0 p), (String.sub arg (p + 1) ((String.length arg) - p - 1))
 		with Not_found -> arg, "" in
 	try
-		let params = Iter.get_params inst in
-		Irg.param_stack params;
-		(match Iter.get_attr inst id with
-		
-		| Iter.EXPR e ->
-			let (s, e) = Toc.prepare_expr info Irg.NOP e in
-			Toc.declare_temps info;
-			Toc.gen_stat info s;
-			Toc.gen_expr info e true;
-			output_string info.Toc.out "\n";
-			
-		| Iter.STAT s ->
-			let s = Toc.prepare_stat info s in
-			Toc.declare_temps info;
-			Toc.gen_stat info s);
-			
-		Toc.cleanup_temps info;
-		Irg.param_unstack params
-	with Not_found -> output_string out def
+		match Iter.get_attr spec id with
+		| Iter.EXPR e -> eval_expr info spec out e
+		| Iter.STAT s -> eval_stat info spec out s
+	with Not_found ->
+		output_string out def
 
 
 (** Test if an attribute is defined.
@@ -155,6 +196,29 @@ let defined_attr inst id =
 (** Shortcut for templater text output from a string.
 	f	Function to get string from. *)
 let out f = Templater.TEXT (fun out -> output_string out (f ()))
+
+
+(** Make a dictionary that supports attributes of a specification.
+	In fact, add default identifiers that will resolve the symbols
+	using the attributes named (prefixed by ".").
+	@param info	Current generation information.
+	@param spec	Specification to get attributes from.
+	@param dict	Parent dictionnary.
+	@return		New dictionnary. *)
+let make_attr_dict info spec dict =
+	
+	let define dict att =
+		match att with
+		| Irg.ATTR_EXPR (n, e) ->
+			(n, Templater.TEXT (fun out -> gen_expr info spec out e)) ::
+			("pre-" ^ n, Templater.TEXT (fun out -> gen_pre_expr info spec out e)) ::
+			dict
+		| Irg.ATTR_STAT (n, s) ->
+			(n, Templater.TEXT (fun out -> eval_stat info spec out s)) ::
+			dict
+		| _ -> dict in
+	
+	List.fold_left define dict (Irg.attrs_of spec)
 
 
 (** Extended a dictionary with parameter information.
@@ -409,12 +473,11 @@ let gen_reg_access name size typ attrs out attr make =
 		if Irg.attr_defined attr attrs then attrs else
 		(Irg.ATTR_STAT (attr, make v))::attrs in
 	let info =  Toc.info () in
+	let spec = Irg.AND_OP ("instruction", [], attrs) in
 	info.Toc.out <- out;
-	info.Toc.inst <- (Irg.AND_OP ("instruction", [], attrs));
+	info.Toc.inst <- spec;
 	info.Toc.iname <- "";
-	Irg.attr_stack attrs;
-	Toc.gen_action info attr;
-	Irg.attr_unstack attrs
+	Irg.in_spec_context spec (fun _ -> Toc.gen_action info attr)
 
 
 (** Make a canonic variable access.
@@ -471,44 +534,47 @@ let is_debug atts =
 
 
 (** Extended the dictionary with definition for a register.
-	@param name		Register name.
-	@param size		Register size.
-	@param typ		Register type.
-	@param atts		Register attributes.
+	@param info		Current generation information.
+	@param spec		Register specification.
 	@param dict		Dictionary to extend.
 	@return			Extended dictionary. *)
-let make_register_dict name size typ atts dict =
-	("type", out (fun _ -> Toc.type_to_string (Toc.convert_type typ))) ::
-	("name", out (fun _ -> name)) ::
-	("NAME", out (fun _ -> Config.uppercase name)) ::
+let make_register_dict info spec dict =
+	let (name, size, typ, atts) = 
+		match spec with
+		| Irg.REG (n, s, t, a) -> (n, s, t, a)
+		| _ -> failwith "App.make_register_dict" in
 	("aliased", Templater.BOOL (fun _ -> contains_alias atts)) ::
-	("is_debug", Templater.BOOL (fun _ -> is_debug atts)) ::
 	("array", Templater.BOOL (fun _ -> size > 1)) ::
-	("size", out (fun _ -> string_of_int size)) ::
-	("type_size", out (fun _ -> string_of_int (Sem.get_type_length typ))) ::
-	("is_pc", Templater.BOOL (fun _ -> is_pc atts)) ::
-	("is_float", Templater.BOOL (fun _ -> is_float typ)) ::
 	("format", out (fun _ -> "\"" ^ (reg_format name size atts) ^ "\"")) ::
-	("printf_format", out (fun _ -> Toc.type_to_printf_format (Toc.convert_type typ))) ::
 	("get", Templater.TEXT (fun out -> gen_reg_getter name size typ atts out)) ::
-	("set", Templater.TEXT (fun out -> gen_reg_setter name size typ atts out)) ::
+	("is_debug", Templater.BOOL (fun _ -> is_debug atts)) ::
+	("is_float", Templater.BOOL (fun _ -> is_float typ)) ::
+	("is_pc", Templater.BOOL (fun _ -> is_pc atts)) ::
 	("label", out (fun _ -> get_label name atts)) ::
-	dict
+	("NAME", out (fun _ -> Config.uppercase name)) ::
+	("name", out (fun _ -> name)) ::
+	("printf_format", out (fun _ -> Toc.type_to_printf_format (Toc.convert_type typ))) ::
+	("set", Templater.TEXT (fun out -> gen_reg_setter name size typ atts out)) ::
+	("size", out (fun _ -> string_of_int size)) ::
+	("type", out (fun _ -> Toc.type_to_string (Toc.convert_type typ))) ::
+	("type_size", out (fun _ -> string_of_int (Sem.get_type_length typ))) ::
+	(make_attr_dict info spec dict)
 
 
 (** Test if the given specification is a register and call f with
 	a dictionary extended with the register description.
+	@param info		Current generation information.
 	@param id		Unique identifier variable.
 	@param f		Function to call.
 	@param maker	Maker description.
 	@param spec		Specification to scan. *)
-let get_register id f dict maker _ spec =
+let get_register info id f dict maker _ spec =
 	match spec with
 	| Irg.REG (name, size, t, atts) ->
 		incr id;
 		f (maker.get_register spec
 			(("id", out (fun _ -> string_of_int !id)) ::
-			(make_register_dict name size t atts dict)))
+			(make_register_dict info spec dict)))
 	| _ -> ()
 
 let get_value f dict t =
@@ -603,13 +669,14 @@ let profiled_switch_size = ref 0
 
 
 (** Traverse all debug registers (see documentation for more details).
+	@param info		Current generation information.
 	@param maker	Current maker.
 	@param f		Function to call with each registers.
 	@param dict		Current dictionary. *)
-let debug_registers maker f dict =
+let debug_registers info maker f dict =
 	let id = ref 0 in
 
-	let process n r = get_register id f dict maker n r in
+	let process n r = get_register info id f dict maker n r in
 	
 	let process_only k r =
 		match r with
@@ -621,8 +688,6 @@ let debug_registers maker f dict =
 	else Irg.StringHashtbl.iter process Irg.syms
 	
 	
-(*fun f dict -> reg_id := 0; Irg.StringHashtbl.iter (get_register reg_id f dict maker) Irg.syms)*)
-
 (**	Build the basic environment for GEP generation.
 	@param info		Generation environment.
 	@param maker	Maker functions (as produced by maker constructor).
@@ -648,7 +713,7 @@ let make_env info maker =
 	("profiled_instructions", Templater.COLL (fun f dict -> 
 	  let _ = Iter.iter_ext (get_ninstruction info maker f dict (!profiled_switch_size)) 0 true in () )) ::
 	("instruction_sets", Templater.COLL (fun f dict -> List.iter (get_instruction_set maker f dict) !Iter.multi_set )) ::
-	("registers", Templater.COLL (fun f dict -> reg_id := 0; Irg.StringHashtbl.iter (get_register reg_id f dict maker) Irg.syms)) ::
+	("registers", Templater.COLL (fun f dict -> reg_id := 0; Irg.iter (get_register info reg_id f dict maker))) ::
 	("values", Templater.COLL (fun f dict -> TypeSet.iter (get_value f dict) param_types)) ::
 	("params", Templater.COLL (fun f dict -> TypeSet.iter (get_param f dict) param_types)) ::
 	("memories", Templater.COLL (fun f dict -> Irg.StringHashtbl.iter (get_memory f dict) Irg.syms)) ::

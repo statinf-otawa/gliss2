@@ -177,6 +177,8 @@ void $(proc)_delete_state($(proc)_state_t *state);
 $(proc)_state_t *$(proc)_copy_state($(proc)_state_t *state);
 $(proc)_state_t *$(proc)_fork_state($(proc)_state_t *state);
 void $(proc)_dump_state($(proc)_state_t *state, FILE *out);
+void $(proc)_output_header_valid(FILE *out);
+void $(proc)_output_state_valid($(proc)_state_t *state, FILE *out);
 $(proc)_platform_t *$(proc)_platform($(proc)_state_t *state);
 
 /* simulation functions */

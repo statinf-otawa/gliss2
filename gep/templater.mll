@@ -34,6 +34,13 @@ let line = ref 0
 let error msg =
 	raise (Error (Printf.sprintf "%s:%d: %s" !file !line msg))
 
+
+(** Raise an error for an undefined symbol.
+	@param id		Undefined symbol.
+	@raise Error	Undefined symbol error. *)
+let error_undefined id =
+	error (Printf.sprintf "symbol \"%s\" cannot be found or has bad type" id)
+
 (** Fallback symbol to look if a text symbol is not found (TEXT or FUN). *)
 let fallback_text = "!text"
 
@@ -59,6 +66,7 @@ and  value_t =
 	| GEN_COLL of (string -> (dict_t -> unit) -> dict_t -> unit)
 		(** collection : argument function must be called for each element with a dictionary fixed for the current element. *)
 	| GEN_BOOL of (string -> bool)						(** generic boolean symbol *)
+	| GEN_TEXT of (out_channel -> string -> unit)		(** generuc text symbol *)
 
 
 type state_t =
@@ -69,71 +77,96 @@ type state_t =
 	| WITH
 
 
-(** Perform text evaluation (and function if any)
+(** Perform text evaluation from the given dictionnary.
 	@param out	Out channel.
 	@param dict	Used dictionnary.
 	@param id	Text identifier. *)
-let do_text out dict id =
-	let fail _ = raise (Error (Printf.sprintf "symbol \"%s\" cannot be found or has bad type" id)) in
+let rec do_text out dict id =
+	do_text_complete out dict id do_text_fallback
+	
+(** Perform text evaluation from the fall-back symbol.
+	@param out	Out channel.
+	@param dict	Used dictionnary.
+	@param id	Text identifier. *)
+and do_text_fallback out dict id =
+	do_text_complete out dict id (fun _ _ _ -> error_undefined id)
 
-	(* parse arguments *)
+(** Perform text evaluation from the given dictionnary and falling-back
+	to the given function if the symbol is not found.
+	@param out	Out channel.
+	@param dict	Used dictionnary.
+	@param id	Text identifier.
+	@param f	Fall-back function. *)
+and do_text_complete out dict id f =
 	let p =  try String.index id ':' with Not_found -> -1 in
 	let id = if p == -1 then id else String.sub id 0 p in
 	let args = if p == -1 then "" else (String.sub id (p + 1) ((String.length id) - p - 1)) in
 		
-	let lookup id args fb =
-		try
-			(match List.assoc id dict with
-			| TEXT f -> f out
-			| FUN f ->  f out args
-			| _ -> fb ())
-		with Not_found ->
-			fb () in
-	
 	try
-		lookup id args (fun _ -> lookup fallback_text id fail)
+		(match List.assoc id dict with
+		| TEXT f -> f out
+		| FUN f ->  f out args
+		| GEN_TEXT f -> f out id
+		| _ -> f out dict id)
 	with Not_found ->
-		raise (Error (Printf.sprintf "uncaught Not_found in generation with \"%s\"" id))
+		f out dict id
 
 
 (** Get a collection.
 	@param dict	Dictionnary to look in.
 	@param id	Identifier.
 	@return		Found collection function. *)
-let do_coll dict id =
+let rec do_coll dict id =
+	do_coll_complete dict id do_coll_fallback
 
-	let lookup i f =
-		try
-			match List.assoc i dict with
-			| COLL f -> f
-			| GEN_COLL f -> (f id)
-			| _ -> f ()
-		with Not_found ->
-			f () in
+(** Get a collection from the fall-back symbol.
+	@param dict	Dictionnary to look in.
+	@param id	Identifier.
+	@return		Found collection function. *)
+and do_coll_fallback dict id =
+	do_coll_complete dict fallback_coll (fun _ _ -> error_undefined id)
 
-	lookup id
-		(fun _ -> lookup fallback_coll
-			(fun _ -> error (Printf.sprintf "\"%s\" is undefined or not a collection" id)))
+(** Get a collection using a fall-back function.
+	@param dict	Dictionnary to look in.
+	@param id	Identifier.
+	@param f	Function to call if the symbol is not found.
+	@return		Found collection function. *)
+and do_coll_complete dict id f =
+	try
+		match List.assoc id dict with
+		| COLL f -> f
+		| GEN_COLL f -> (f id)
+		| _ -> f dict id
+	with Not_found ->
+		f dict id
+	
 
-
-(** Get a boolean value.
+(** Get a boolean value from the dictionnary.
 	@param dict		Dictionnary to look in.
 	@param id		Identifier.
 	@return			Boolean value. *)
-let do_bool dict id =
+let rec do_bool dict id =
+	do_bool_complete dict id do_bool_fallback
 
-	let lookup i f =
-		try
-			match List.assoc i dict with
-			| BOOL f -> f ()
-			| GEN_BOOL f -> f id
-			| _ -> f ()
-		with Not_found ->
-			f () in
+(** Get a boolean value from the fall-back symbol
+	@param dict		Dictionnary to look in.
+	@param id		Identifier.
+	@return			Boolean value. *)
+and do_bool_fallback dict id =
+	do_bool_complete dict fallback_bool (fun _ -> error_undefined id)
 
-	lookup id
-		(fun _ -> lookup fallback_bool
-			(fun _ -> false))
+(** Get a boolean value from the given function if the symbol is not found.
+	@param dict		Dictionnary to look in.
+	@param id		Identifier.
+	@return			Boolean value. *)
+and do_bool_complete dict id f =
+	try
+		match List.assoc id dict with
+		| BOOL f -> f ()
+		| GEN_BOOL f -> f id
+		| _ -> f dict id
+	with Not_found ->
+		f dict id
 
 
 (** Test if a definition is provided in the dictionary.
@@ -156,7 +189,7 @@ rule scanner out dict state = parse
   "$$"
   	{ output_char out '$'; scanner out dict state lexbuf }
 
-|  "$(foreach" blank (id as id) ")" ('\n'? as nl)
+|  blank*  "$(foreach" blank (id as id) ")" ('\n'? as nl)
   	{
 		let buf = Buffer.contents (scan_end (Buffer.create 1024) 0 lexbuf) in
 		let f = do_coll dict id in
@@ -165,7 +198,7 @@ rule scanner out dict state = parse
 		scanner out dict state lexbuf
 	}
 
-| "$(with" blank (id as id) ')'  ('\n'? as nl)
+| blank* "$(with" blank (id as id) ')'  ('\n'? as nl)
 	{
 		let buf = Buffer.contents (scan_end (Buffer.create 1024) 0 lexbuf) in
 		let f = do_coll dict id in
@@ -174,20 +207,20 @@ rule scanner out dict state = parse
 		scanner out dict state lexbuf
 	}
 
-| "$(end)" ('\n'? as nl)
+| blank* "$(end)" ('\n'? as nl)
 	{
 		if nl <> "" then incr line;		
 		if state = TOP then error "extraneous $(end) tag"
 	}
 
-| "$(else)" ('\n'? as nl)
+| blank* "$(else)" ('\n'? as nl)
 	{
 		if nl <> "" then incr line;
 		if state = THEN then skip out dict 0 lexbuf
 		else failwith "'else' out of 'if'"
 	}
 
-| "$(if" blank '!' (id as id) ')' ('\n'? as nl)
+| blank* "$(if" blank '!' (id as id) ')' ('\n'? as nl)
 	{
 		let cond = do_bool dict id in
 		if nl <> "" then incr line;
@@ -196,7 +229,7 @@ rule scanner out dict state = parse
 		scanner out dict state lexbuf
 	}
 
-| "$(if" blank (id as id) ')' ('\n'? as nl)
+| blank* "$(if" blank (id as id) ')' ('\n'? as nl)
 	{
 		let cond = do_bool dict id in
 		if nl <> "" then incr line;
@@ -205,7 +238,7 @@ rule scanner out dict state = parse
 		scanner out dict state lexbuf
 	}
 
-| "$(ifdef" blank (id as id) ')' ('\n'? as nl)
+| blank* "$(ifdef" blank (id as id) ')' ('\n'? as nl)
 	{
 		let cond = do_ifdef dict id in
 		if nl <> "" then incr line;
@@ -214,7 +247,7 @@ rule scanner out dict state = parse
 		scanner out dict state lexbuf
 	}
 
-| "$(ifndef" blank (id as id) ')' ('\n'? as nl)
+| blank* "$(ifndef" blank (id as id) ')' ('\n'? as nl)
 	{
 		let cond = do_ifdef dict id in
 		if nl <> "" then incr line;
@@ -250,6 +283,10 @@ and skip out dict cnt = parse
   	{ skip out dict (cnt + 1) lexbuf }
 | "$(if" blank?
 	{ skip out dict (cnt + 1) lexbuf }
+| "$(ifdef" blank?
+	{ skip out dict (cnt + 1) lexbuf }
+| "$(ifndef" blank?
+	{ skip out dict (cnt + 1) lexbuf }
 | "$(end)" '\n'?
 	{ if cnt = 0 then () else skip out dict (cnt -1) lexbuf }
 | "$(else)" '\n'?
@@ -266,11 +303,15 @@ and skip out dict cnt = parse
 and scan_end buf cnt = parse
   "$$" as s
   	{ Buffer.add_string buf s; scan_end buf cnt lexbuf }
-| "$(foreach" blank as s
-  	{ Buffer.add_string buf s; scan_end buf (cnt + 1) lexbuf }
-| "$(if" blank as s
+| blank* "$(foreach" blank as s
 	{ Buffer.add_string buf s; scan_end buf (cnt + 1) lexbuf }
-| "$(end)" as s
+| blank* "$(if" blank as s
+	{ Buffer.add_string buf s; scan_end buf (cnt + 1) lexbuf }
+| blank* "$(ifdef" blank as s
+	{ Buffer.add_string buf s; scan_end buf (cnt + 1) lexbuf }
+| blank* "$(ifndef" blank as s
+	{ Buffer.add_string buf s; scan_end buf (cnt + 1) lexbuf }
+| blank* "$(end)" as s
 	{ if cnt = 0 then buf
 	else (Buffer.add_string buf s; scan_end buf (cnt - 1) lexbuf) }
 | '\n'

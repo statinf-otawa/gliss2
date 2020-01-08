@@ -368,13 +368,17 @@ let generate_text info out id =
 	@param id	IRG specification name.
 	@param out	Output channel. *)
 let generate_bool id =
-	match Irg.get_symbol id with
-	| Irg.LET (_, _, c, _) -> Sem.is_true c
-	| Irg.ATTR (Irg.ATTR_EXPR (_, e)) ->
-		(try Sem.is_true (Sem.eval_const e)
-		with Irg.PreError _ -> false)
-	| _ ->
-		false
+	if id <> "" && (String.get id ((String.length id) - 1)) == '?' then		
+		let id = String.sub id 0 ((String.length id) - 1) in
+		(Irg.get_symbol id) <> Irg.UNDEF
+	else
+		match Irg.get_symbol id with
+		| Irg.LET (_, _, c, _) -> Sem.is_true c
+		| Irg.ATTR (Irg.ATTR_EXPR (_, e)) ->
+			(try Sem.is_true (Sem.eval_const e)
+			with Irg.PreError _ -> false)
+		| _ ->
+			false
 
 
 (** Generate code for an IRG specification as a text.
@@ -389,7 +393,8 @@ let rec generate_coll info id f dict =
 		let dict = ("name", Templater.TEXT (out name)) :: dict in
 		Irg.in_context [] atts (fun _ -> f dict) in
 
-	match Irg.get_symbol id with
+	let spec = Irg.get_symbol id in
+	match spec with
 	| Irg.LET (name, _, _, atts)
 	| Irg.TYPE (name, _, atts) ->
 		process name [] atts dict
@@ -400,7 +405,7 @@ let rec generate_coll info id f dict =
 
 	| Irg.REG(name, size, typ, atts) ->
 		Irg.in_context [] atts
-			(fun _ -> f (App.make_register_dict name size typ atts dict))
+			(fun _ -> f (App.make_register_dict info spec dict))
 
 	| Irg.AND_OP (name, pars, atts) ->
 		Irg.in_context [] atts

@@ -295,21 +295,46 @@ Example with summary of available symbols for the ''registers'' collection:
 
 ''$(foreach registers)''
 
-  * ''$(type)'' (//text//) -- Name of the C type used to represent the given register.
-  * ''$(name)'' (//text//) -- Name of the given register.
-  * ''$(NAME)'' (//text//) -- Name of the given register (uppercase).
   * ''$(aliased)''  (//bool//) -- True if the given register is declared as an alias to another register.
   * ''$(array)'' (//bool//) -- True if the given register is declared as a bank of more than one rgister.
+  * ''$(format)'' (//text//) -- Format to display the name of the register (if register is multiple, contains a %d).
+  * ''$(get)'' (//text//) -- Generate code to read the register (see below).
+  * ''$(is_debug) (//bool//) -- Test if the current register is displayed for debugging.
+  * ''$(is_float)'' (//bool//) -- True if type of register is a float.
+  * ''$(is_pc)'' (//bool//) -- True if the register represents the PC.
+  * ''$(label)'' (//text//) -- Output human-readable name of the register.
+  * ''$(NAME)'' (//text//) -- Name of the given register (uppercase).
+  * ''$(name)'' (//text//) -- Name of the given register.
+  * ''$(printf_format)'' (//text//) -- Printf-format to display the value of the register.  
+  * ''$(set)'' (//text//) -- Generate code to write to a register (see below).
   * ''$(size)'' (//text//) -- If the given register is a bank, it returns the bank's size,
 else it returns 1.
-  * ''$(format)'' (//text//) -- Format to display the name of the register (if register is multiple, contains a %d).
-  * ''$(is_float)'' (//bool//) -- True if type of register is a float.
-  * ''$(is_64)''  (//bool//) -- True if the register type occupies more than 32 bits.
-  * ''$(id)'' (//text//) -- Unique integer identifier for the register.
-  * ''$(is_pc)'' (//bool//) -- True if the register represents the PC.
+  * ''$(type)'' (//text//) -- Name of the C type used to represent the given register.
   * ''$(type_size)'' (//text//) -- Number of bits of the register type.
 
 ''$(end)''
+
+''$(get)'' and ''$(set)'' can be used to implement a generic debugger.
+''$(get)'' generates a code of the form:
+<code c>
+	GLISS_GET_t(x);
+</code>
+Where //x// is the value of the register and //t// a type identifier.
+''GLISS_GET_t'' must be defined by the application to assign //x// to the right variable.
+
+''$(set)'' generates code of the form:
+<code c>
+	R = GLISS_t;
+</code>
+Where //R// is the assigned register and //t// a type identifier. The macro ''GLISS_t'' must be defined by the application to design the value to assign to the register.
+
+In both cases, if the register is a bank (multiple), the index of the assigned member must be set in a variable named ''GLISS_IDX''. The type identifier //t// must be defined as below:
+^ Identifier ^ Type ^
+| I | Integer types of 32-bit or less |
+| L | Integer types of 64-bit or less |
+| F | Floating-point type of 32-bit |
+| D | Floating-point type of 64-bit |
+
 
 
 === ''memories'' (//collect//) ===

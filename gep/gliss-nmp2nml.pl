@@ -176,10 +176,7 @@ sub parse_file{
             
             # !!HKC!!
             $num_ligne = $num_ligne + 1;
-            
 			print "#line $num_ligne \"$nom_fichier_courrant\"\n";
-			
-			# !!HKC!!
 			$num_ligne = $num_ligne - 1;
         } 
 
@@ -197,8 +194,9 @@ sub parse_file{
             $nom_fichier_courrant=$file;
 			
 			# !!HKC!!
-			$num_ligne = pop(@line_stack) + 1;
-			print "#line $num_ligne \"$nom_fichier_courrant\"\n"
+			$num_ligne = pop(@line_stack);
+			my $next_line = $num_ligne + 1;
+			print "#line $next_line \"$nom_fichier_courrant\"\n"
 			
 			
         }
@@ -217,6 +215,7 @@ sub parse_file{
 		
 			# !!HKC!! 
 			my $one = 0;
+			
             if (!$continued_ligne) {
                 ($pos,$macro_found,$debut,$nb_paren)=&search_macro($ligne,0);
             }
@@ -224,8 +223,10 @@ sub parse_file{
                 my $str;
 				
 				# !!HKC!!
-				$one = 1;
-				push(@line_stack, $num_ligne);
+				if(!$one) {
+					$one = 1;
+					push(@line_stack, $num_ligne);
+				}
 				
                 # macro found (now or before) -> get parameters
                 pos($ligne)=$pos;
@@ -282,7 +283,7 @@ sub parse_file{
 			}
 
             $nb_lines_written+=count_cr($ligne);
-		print $ligne;
+		    print $ligne;
 			
 			# !!HKC!!
 			if($one) {

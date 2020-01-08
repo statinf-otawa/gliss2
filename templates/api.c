@@ -416,6 +416,54 @@ $(end)$(end)$(end)
 
 
 /**
+ * Output the header of a CSV validation output.
+ * @param out	File to output to.
+ */
+void $(proc)_output_header_valid(FILE *out) {
+	fputs("# PC", out);
+	$(foreach registers)$(ifdef validate)$(if array)
+	for(int i = 0; i < $(size); i++) {
+		fputc('\t', out);
+		fprintf(out, $(format), i);
+	}
+	$(else)
+	fputs("\t$(label)", out);
+	$(end)$(end)$(end)
+	fputc('\n', out);
+}
+
+
+/**
+ * Output the given state for validation. The first column is the address
+ * of the current instruction and next ones are the register.
+ * @param state		State to dump.
+ * @param out		File to output to.
+ */
+void $(proc)_output_state_valid($(proc)_state_t *state, FILE *out) {
+
+#	define GLISS_GET_I(v)	fprintf(out, "\t%08x", (v))
+
+	fprintf(out, "%08x", state->$(pc_name));
+	$(foreach registers)$(ifdef validate)$(if array)
+	for(int GLISS_IDX = 0; GLISS_IDX < $(size); GLISS_IDX++) {
+		$(ifdef get)
+		$(get)
+		$(else)
+		fprintf(out, "\t%08x", state->$(NAME)[GLISS_IDX]);
+		$(end)
+	}
+	$(else)
+		$(ifdef get)
+	$(get)
+		$(else)
+	fprintf(out, "\t%08x", state->$(name));
+		$(end)
+	$(end)$(end)$(end)
+	fputc('\n', out);
+}
+
+
+/**
  * return a reference (a pointer in fact) towards the platform of a given state
  *
  * @param	state	the state we want to access the platform
