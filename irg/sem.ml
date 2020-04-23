@@ -449,10 +449,12 @@ let eval_coerce t (_, v) =
 	| CARD n, FIXED_CONST i 	when n <= 32 	-> CARD_CONST (Int32.of_float (abs_float i))
 	| CARD n, FIXED_CONST i 	when n <= 64 	-> CARD_CONST_64 (Int64.of_float (abs_float i))
 
-	| FLOAT _, CARD_CONST i -> FIXED_CONST (Int32.to_float i)
-	| FLOAT _, CARD_CONST_64 i -> FIXED_CONST (Int64.to_float i)
+	| FLOAT _, CARD_CONST i 					-> FIXED_CONST (Int32.to_float i)
+	| FLOAT _, CARD_CONST_64 i 					-> FIXED_CONST (Int64.to_float i)
+	| FLOAT _, FIXED_CONST _ 					-> v
 
-	| _ -> pre_error "unsupported constant coerction"
+	| _ ->
+		pre_error "unsupported constant coercition"
 
 
 (**

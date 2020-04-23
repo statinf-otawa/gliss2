@@ -154,26 +154,40 @@ let rec gen_disasm info inst expr =
 	and check_symbol id =
 		match Irg.get_symbol id with
 		| REG _ | MEM _ ->
-			error (fun out -> fprintf out "\"%s\" forbidden in syntax attribute: %a" id output_expr expr)
+			Irg.error_spec inst
+				(fun out -> fprintf out "\"%s\" forbidden in syntax attribute: %a" id output_expr expr)
 		| LET _ | Irg.PARAM _  | _ -> ()
 
 	and check expr =
 		match expr with
-		| Irg.NONE -> ()
-		| Irg.COERCE (_, expr) -> check expr
+		| Irg.NONE ->
+			()
+		| Irg.COERCE (_, expr) ->
+			check expr
 		| Irg.FORMAT (_, args)
-		| Irg.CANON_EXPR (_, _, args) -> List.iter check args
-		| Irg.REF (_, id) -> check_symbol id
-		| Irg.FIELDOF (_, id, _) -> check_symbol id
-		| Irg.ITEMOF (_, id, expr) -> check_symbol id; check expr
-		| Irg.BITFIELD (_, b, l, u) -> check b; check l; check u
-		| Irg.UNOP (_, _, arg) -> check arg
-		| Irg.BINOP (_, _, arg1, arg2) -> check arg1; check arg2
-		| Irg.IF_EXPR (_, c, t, e) -> check c; check t; check e
-		| Irg.SWITCH_EXPR (_, c, cs, d) -> check c; check d; List.iter (fun (_, e) -> check e) cs
+		| Irg.CANON_EXPR (_, _, args) ->
+			List.iter check args
+		| Irg.REF (_, id) ->
+			check_symbol id
+		| Irg.FIELDOF (_, id, _) ->
+			check_symbol id
+		| Irg.ITEMOF (_, id, expr) ->
+			check_symbol id; check expr
+		| Irg.BITFIELD (_, b, l, u) ->
+			check b; check l; check u
+		| Irg.UNOP (_, _, arg) ->
+			check arg
+		| Irg.BINOP (_, _, arg1, arg2) ->
+			check arg1; check arg2
+		| Irg.IF_EXPR (_, c, t, e) ->
+			check c; check t; check e
+		| Irg.SWITCH_EXPR (_, c, cs, d) ->
+			check c; check d; List.iter (fun (_, e) -> check e) cs
 		| Irg.CONST _ -> ()
-		| Irg.ELINE (f, l, e) -> Toc.locate_error f l check e
-		| Irg.CAST (_, e) -> check e in
+		| Irg.ELINE (f, l, e) ->
+			Irg.handle_error f l (fun _ -> Toc.locate_error f l check e)
+		| Irg.CAST (_, e) ->
+			check e in
 
 	(* !!DEBUG!! *)
 	(*print_string "gen_disasm:";
