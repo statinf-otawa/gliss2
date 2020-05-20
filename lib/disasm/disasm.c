@@ -276,7 +276,8 @@ int main(int argc, char **argv) {
 		gliss_loader_sym(loader, sym_it, &data);
 		if(data.type == GLISS_LOADER_SYM_CODE || data.type == GLISS_LOADER_SYM_DATA) {
 			printf("[L]");
-			add_to_list(&labels, data.name, data.value);
+			if(data.sect != 0)
+				add_to_list(&labels, data.name, data.value);
 		}
 		printf("\t%20s\tvalue:%08X\tsize:%08X\tinfo:%08X\tshndx:%08X\n", data.name, data.value, data.size, data.type, data.sect);
 	}

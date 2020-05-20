@@ -1605,16 +1605,15 @@ let print_spec spec =
 	output_spec stdout spec
 
 
-(**
-    return the gliss_isize defined in nmp sources
-*)
+(** Return the gliss_isize defined in nmp sources.
+	@return	List of accepted instruction sizes. *)
 let get_isize _ =
 	match get_symbol "gliss_isize" with
 	(* if gliss_isize not defined, we assume we have a cisc isa *)
 	| UNDEF -> []
 	| LET(st, _, cst, _) ->
 		(match cst with
-		STRING_CONST(nums) ->
+		| STRING_CONST(nums) ->
 			List.map
 			(fun x ->
 				try
@@ -1625,10 +1624,10 @@ let get_isize _ =
 			)
 			(Str.split (Str.regexp ",") nums)
 		| _ ->
-			failwith "gliss_isize must be defined as a string constant (let gliss_size = \"...\")"
+			error (asis "gliss_isize must be defined as a string constant (let gliss_size = \"...\")")
 		)
 	| _ ->
-		failwith "gliss_isize must be defined as a string constant (let gliss_size = \"...\")"
+		error (asis "gliss_isize must be defined as a string constant (let gliss_size = \"...\")")
 
 (** Get the type of a parameter.
 	@param p	Parameter.
