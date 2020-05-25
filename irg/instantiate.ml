@@ -689,9 +689,15 @@ let rec simplify_format_expr ex =
 		ex
 	| REF (_, id) -> 
 		(match get_symbol id with
-		| ATTR (ATTR_EXPR (_, e)) -> simplify_format_expr e
-		| PARAM _ -> ex
-		| s -> failwith "Instantiate: bad symbol")
+		| ATTR (ATTR_EXPR (_, e)) ->
+			simplify_format_expr e
+		| PARAM _
+		| REG _
+		| MEM _
+		| VAR _ ->
+			ex
+		| s ->
+			failwith "Instantiate: bad symbol")
 	| FORMAT(fmt, ps) ->
 		let str_format = Irg.split_format_string fmt in
 		let ps = List.map simplify_format_expr ps in
