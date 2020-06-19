@@ -160,7 +160,7 @@ let get_source f dict source =
 *)
 let find_first_bit mask =
   let rec aux index shifted_mask =
-    if (Int64.logand shifted_mask 1L) <> 0L || index >= 32
+    if (Int64.logand shifted_mask 1L) <> 0L (* || index >= 32 *)
     then index
     else aux (index+1) (Int64.shift_right shifted_mask 1)
   in
