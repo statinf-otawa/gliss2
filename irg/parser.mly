@@ -417,8 +417,12 @@ TypeExpr:
 		{ Irg.BOOL }
 |	INT LPAREN LetExpr RPAREN
 		{ Irg.INT (Sem.to_int (Sem.eval_const $3)) }
+|	CARD error
+		{ syntax_error "syntax of int should be: int(SIZE)" }
 |	CARD LPAREN LetExpr RPAREN
 		{ Irg.CARD (Sem.to_int (Sem.eval_const $3)) }
+|	CARD error
+		{ syntax_error "syntax of card should be: card(SIZE)" }
 |	FIX  LPAREN LetExpr COMMA LetExpr RPAREN
 		{ Irg.FIX (
 			Sem.to_int (Sem.eval_const $3),
@@ -788,7 +792,7 @@ Expr:
 	COERCE LPAREN Type COMMA Expr RPAREN
 		{ handle_expr (fun _ -> Sem.make_coerce $3 $5) }
 |	COERCE error
-		{ syntax_error "syntax error in coerce expression" }
+		{ syntax_error "syntax of coerce should be: coerce(TYPE, EXPRESSION)" }
 |	FORMAT LPAREN STRING_CONST COMMA EnterFormat ArgList RPAREN LeaveFormat
 		{ eline (Sem.build_format $3 $6 !Sem.attr_env) }
 |	FORMAT error

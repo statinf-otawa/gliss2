@@ -259,13 +259,13 @@ $(end)
 }
 $(end)
 
-$(proc)_inst_t *$(proc)_decode($(proc)_decoder_t *decoder, $(proc)_address_t address)
+$(proc)_inst_t *$(proc)_decode($(proc)_decoder_t *decoder, $(proc)_address_t $(PROC)____IADDR)
 {
 	$(proc)_state_t *state = decoder->state;
 	$(foreach instruction_sets)
 	if ($(select_iset)) {
-		$(if is_RISC_iset)return $(proc)_decode_$(C_size_iset)(decoder, address);
-		$(else)return $(proc)_decode_CISC(decoder, address);$(end)
+		$(if is_RISC_iset)return $(proc)_decode_$(iset_name)(decoder, $(PROC)____IADDR);
+		$(else)return $(proc)_decode_CISC(decoder, $(PROC)____IADDR);$(end)
 	}
 	$(end)
 }
