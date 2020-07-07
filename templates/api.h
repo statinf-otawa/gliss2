@@ -17,10 +17,11 @@
 #	include <sys/cdefs.h>
 #endif
 
-
 #include "id.h"
 #include "mem.h"
 #include "decode.h"
+
+__BEGIN_DECLS
 
 #define $(PROC)_PROC_NAME "$(PROC)"
 #define $(PROC)_PC_NAME  $(pc_name)
@@ -205,5 +206,7 @@ $(if is_CISC_present)
 /* variable length functions */
 uint32_t value_on_mask(mask_t *inst, mask_t *mask);
 $(end)
+
+__END_DECLS
 
 #endif /* GLISS_$(PROC)_INCLUDE_$(PROC)_API_H */
