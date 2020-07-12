@@ -1,7 +1,7 @@
 
 CFLAGS=-I../include -I../src -g -O3
 LIBADD += $$(shell bash ../src/$(proc)-config --libs)
-EXEC=$(proc)-disasm
+EXEC=$(proc)-disasm$$(EXE_SUFFIX)
 
 all: $$(EXEC)
 
