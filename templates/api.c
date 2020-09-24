@@ -591,7 +591,6 @@ $(end)
 		sim->ended = 1;
 }
 
-
 /**
  * Straightforward execution of the simulated programm.
  * It runs and count the number of executed instructions

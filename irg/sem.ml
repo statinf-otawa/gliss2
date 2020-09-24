@@ -2410,6 +2410,12 @@ let make_and_mode (id, line) pars exp atts =
 	@param atts	Attributes.
 	@return		Made specification. *)
 let make_mem (id, line) size typ atts =
+	if not (attr_defined "alias" atts) then
+		(match typ with
+		| INT(8) | CARD(8) ->
+			()
+		| _ ->
+			error (fun out -> fprintf out "base memory %s should have a cell type of 8-bits." id));
 	check_alias (Irg.MEM (id, size, typ, set_line_info atts line))
 
 
