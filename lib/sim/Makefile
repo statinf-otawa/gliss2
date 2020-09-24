@@ -1,6 +1,6 @@
 CFLAGS=-I../include -I../src -g -O3
 LIBADD =  $$(shell bash ../src/$(proc)-config --libs)
-EXEC=$(proc)-sim
+EXEC=$(proc)-sim$$(EXE_SUFFIX)
 
 all: $$(EXEC)
 
