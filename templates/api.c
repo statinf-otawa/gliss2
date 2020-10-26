@@ -442,6 +442,7 @@ void $(proc)_output_header_valid(FILE *out) {
 void $(proc)_output_state_valid($(proc)_state_t *state, FILE *out) {
 
 #	define GLISS_GET_I(v)	fprintf(out, "\t%08x", (v))
+#	define GLISS_GET_L(v)	fprintf(out, "\t%016llx", (v))
 
 	fprintf(out, "%08x", state->$(pc_name));
 	$(foreach registers)$(ifdef validate)$(if array)
