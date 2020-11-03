@@ -377,9 +377,9 @@ Resource:
 
 CanonSpec:
 	CANON STRING_CONST LPAREN CanonParamList RPAREN
-		{ ($2, Irg.CANON_DEF($2, Irg.CANON_FUNC, Irg.NO_TYPE, $4)) }
+		{ ($2, Irg.CANON_DEF($2, Irg.CANON_FUNC, Irg.NO_TYPE, List.rev $4)) }
 |	CANON Type STRING_CONST LPAREN CanonParamList RPAREN
-		{ ($3, Irg.CANON_DEF($3, Irg.CANON_FUNC, $2, $5)) }
+		{ ($3, Irg.CANON_DEF($3, Irg.CANON_FUNC, $2, List.rev $5)) }
 |	CANON STRING_CONST LPAREN RPAREN
 		{ ($2, Irg.CANON_DEF($2, Irg.CANON_FUNC, Irg.NO_TYPE, [])) }
 |	CANON Type STRING_CONST LPAREN RPAREN
