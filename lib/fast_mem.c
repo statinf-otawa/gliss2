@@ -20,6 +20,25 @@
  *	Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
+// swap commands
+#ifdef _MSC_VER
+#	include <stdlib.h>
+#	define bswap_16(x) _byteswap_uint16(x)
+#	define bswap_32(x) _byteswap_uint32(x)
+#	define bswap_64(x) _byteswap_uint64(x)
+#elif defined(__APPLE__)
+#	include <libkern/OSByteOrder.h>
+#	define bswap_16(x) OSSwapInt16(x)
+#	define bswap_32(x) OSSwapInt32(x)
+#	define bswap_64(x) OSSwapInt64(x)
+#else
+#	include <byteswap.h>
+#endif
+
+// fast modulo (y must be a power of 2)
+#define FMOD(x, y)	((x) & ((y)-1))
+
+
 /**
  * @defgroup memory Memory Module
  * A memory module is used to simulate the memory behaviour.
@@ -455,39 +474,33 @@ uint8_t gliss_mem_read8(gliss_memory_t *memory, gliss_address_t address) {
  * @ingroup memory
  */
 uint16_t gliss_mem_read16(gliss_memory_t *memory, gliss_address_t address) {
-	memory_64_t *mem = (memory_64_t *)memory;
+	typedef uint16_t T;
+#	define BSWAP(x)	bswap_16(x)
 	union {
-		uint8_t bytes[2];
-		uint16_t half;
+		uint8_t bytes[sizeof(T)];
+		T word;
 	} val;
-	uint8_t a;
+    T r;
 
 	/* get page */
-    gliss_address_t offset = address % MEMORY_PAGE_SIZE;
-    memory_page_table_entry_t *pte=mem_get_page(mem, address);
-    uint8_t *p = pte->storage + offset;
+    gliss_address_t offset = FMOD(address, MEMORY_PAGE_SIZE);
+    memory_page_table_entry_t *pte = mem_get_page(memory, address);
+    uint8_t* p = pte->storage + offset;
 
-	/* aligned ? */
-	if((address & 0x00000001) == 0)
-#		if HOST_ENDIANNESS == TARGET_ENDIANNESS
-			return *(uint16_t *)p;
-#		else
-			val.half = *(uint16_t *)p;
-#		endif
-
-	/* unaligned ! */
+	/* read the bytes */
+	if(!((offset & (sizeof(T)-1)) | ((offset + (sizeof(T)-1)) & MEMORY_PAGE_SIZE)))
+		val.word = *(T *)p;
 	else
-#		if HOST_ENDIANNESS == TARGET_ENDIANNESS
-			{ memcpy(val.bytes, p, 2); return val.half; }
-#		else
-			memcpy(val.bytes, p, 2);
-#		endif
+		gliss_mem_read(memory, address, val.bytes, sizeof(T));
 
-	/* invert */
-	a = val.bytes[0];
-	val.bytes[0] = val.bytes[1];
-	val.bytes[1] = a;
-	return val.half;
+	/* possibly change order */
+#	if HOST_ENDIANNESS == TARGET_ENDIANNESS
+		r = val.word;
+#	else
+		r = BSWAP(val.word);
+#	endif
+    return r;
+#	undef BSWAP
 }
 
 
@@ -499,50 +512,33 @@ uint16_t gliss_mem_read16(gliss_memory_t *memory, gliss_address_t address) {
  * @ingroup memory
  */
 uint32_t gliss_mem_read32(gliss_memory_t *memory, gliss_address_t address) {
-	memory_64_t *mem = (memory_64_t *)memory;
+	typedef uint32_t T;
+#	define BSWAP(x)	bswap_32(x)
 	union {
-		uint8_t bytes[4];
-		uint32_t word;
+		uint8_t bytes[sizeof(T)];
+		T word;
 	} val;
-	uint8_t a;
+    T r;
 
 	/* get page */
-    gliss_address_t offset = address % MEMORY_PAGE_SIZE;
-    memory_page_table_entry_t *pte=mem_get_page(mem, address);
-    uint8_t *p = pte->storage + offset;
+    gliss_address_t offset = FMOD(address, MEMORY_PAGE_SIZE);
+    memory_page_table_entry_t *pte = mem_get_page(memory, address);
+    uint8_t* p = pte->storage + offset;
 
-	/* aligned ? */
-	if((address & 0x00000003) == 0)
-#		if HOST_ENDIANNESS == TARGET_ENDIANNESS
-			return *(uint32_t *)p;
-#		else
-			val.word = *(uint32_t *)p;
-#		endif
-
-	/* unaligned ! */
+	/* read the bytes */
+	if(!((offset & (sizeof(T)-1)) | ((offset + (sizeof(T)-1)) & MEMORY_PAGE_SIZE)))
+		val.word = *(T *)p;
 	else
-#		if HOST_ENDIANNESS == TARGET_ENDIANNESS
-			{ memcpy(val.bytes, p, 4); return val.word; }
-#		else
-			memcpy(val.bytes, p, 4);
-#		endif
+		gliss_mem_read(memory, address, val.bytes, sizeof(T));
 
-	/*Faster byte swapping
-    a = (val.word & 0xFF000000u) >> (3*8) |
-        (val.word & 0x00FF0000u) >> (1*8) |
-        (val.word & 0x0000FF00u) << (1*8) |
-        (val.word & 0x000000FFu) << (3*8);
-
-    */
-    // Slower byte swapping :
-	/* invert */
-	a = val.bytes[0];
-	val.bytes[0] = val.bytes[3];
-	val.bytes[3] = a;
-	a = val.bytes[1];
-	val.bytes[1] = val.bytes[2];
-	val.bytes[2] = a;
-	return val.word;
+	/* possibly change order */
+#	if HOST_ENDIANNESS == TARGET_ENDIANNESS
+		r = val.word;
+#	else
+		r = BSWAP(val.word);
+#	endif
+    return r;
+#	undef BSWAP
 }
 
 
@@ -554,48 +550,33 @@ uint32_t gliss_mem_read32(gliss_memory_t *memory, gliss_address_t address) {
  * @ingroup memory
  */
 uint64_t gliss_mem_read64(gliss_memory_t *memory, gliss_address_t address) {
-	memory_64_t *mem = (memory_64_t *)memory;
+	typedef uint64_t T;
+#	define BSWAP(x)	bswap_64(x)
 	union {
-		uint8_t bytes[8];
-		uint64_t dword;
+		uint8_t bytes[sizeof(T)];
+		T word;
 	} val;
-	uint8_t a;
+    T r;
 
 	/* get page */
-    gliss_address_t offset = address % MEMORY_PAGE_SIZE;
-    memory_page_table_entry_t *pte=mem_get_page(mem, address);
-    uint8_t *p = pte->storage + offset;
+    gliss_address_t offset = FMOD(address, MEMORY_PAGE_SIZE);
+    memory_page_table_entry_t *pte = mem_get_page(memory, address);
+    uint8_t* p = pte->storage + offset;
 
-	/* aligned ? */
-	if((address & 0x00000007) == 0)
-#		if HOST_ENDIANNESS == TARGET_ENDIANNESS
-			return *(uint64_t *)p;
-#		else
-			val.dword = *(uint64_t *)p;
-#		endif
-
-	/* unaligned ! */
+	/* read the bytes */
+	if(!((offset & (sizeof(T)-1)) | ((offset + (sizeof(T)-1)) & MEMORY_PAGE_SIZE)))
+		val.word = *(T *)p;
 	else
-#		if HOST_ENDIANNESS == TARGET_ENDIANNESS
-			{ memcpy(val.bytes, p, 8); return val.dword; }
-#		else
-			memcpy(val.bytes, p, 8);
-#		endif
+		gliss_mem_read(memory, address, val.bytes, sizeof(T));
 
-	/* invert */
-	a = val.bytes[0];
-	val.bytes[0] = val.bytes[7];
-	val.bytes[7] = a;
-	a = val.bytes[1];
-	val.bytes[1] = val.bytes[6];
-	val.bytes[6] = a;
-	a = val.bytes[2];
-	val.bytes[2] = val.bytes[5];
-	val.bytes[5] = a;
-	a = val.bytes[3];
-	val.bytes[3] = val.bytes[4];
-	val.bytes[4] = a;
-	return val.dword;
+	/* possibly change order */
+#	if HOST_ENDIANNESS == TARGET_ENDIANNESS
+		r = val.word;
+#	else
+		r = BSWAP(val.word);
+#	endif
+    return r;
+#	undef BSWAP
 }
 
 

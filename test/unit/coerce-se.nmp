@@ -1,0 +1,20 @@
+
+let proc="mine"
+let gliss_isize = "32"
+
+reg pc[1, card(32)] is_pc = 1
+
+reg r32[1, card(32)]
+var a1[1, card(5)]
+var utmp[1, card(32)]
+
+op init()
+	action = { }
+
+op instruction()
+	image = "00000000 00000000 00000000 00000000"
+	syntax = "bof"
+	action = {
+		utmp = coerce( card(3 >> a1;
+	}
+
