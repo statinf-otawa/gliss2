@@ -1322,23 +1322,29 @@ let rec print_location loc = output_location stdout loc
 
 (** Print a statement
 	@param out	Channel to output to.
-	@param stat	Statement to print.*)
-let rec output_statement out stat =
+	@param stat	Statement to print.
+	@param tab	Tabulation depth. *)
+let rec output_statement_tab out stat tab =
+	let rec do_indent n =
+		if n = 0 then () else (output_char out '\t'; do_indent (n - 1)) in
+	let indent _ = do_indent tab in
 	match stat with
 	  NOP ->
 		()
 	| SEQ (stat1, stat2) ->
-		output_statement out stat1;
-		output_statement out stat2
+		output_statement_tab out stat1 tab;
+		output_statement_tab out stat2 tab
 	| EVAL (ch1, ch2) ->
 		if ch1 <> "" then Printf.fprintf out "\t\t%s.%s;\n" ch1 ch2 else Printf.fprintf out "\t\t%s;\n" ch2
 	| SET (loc, exp) ->
+		indent ();
 		output_string out "\t\t";
 		output_location out loc;
 		output_string out " = ";
 		output_expr out exp;
 		output_string out ";\n"
 	| CANON_STAT (ch, expr_liste) ->
+		indent ();
 		Printf.fprintf out "\t\t\"%s\" (" ch;
 		ignore (List.fold_left
 			(fun f e ->
@@ -1348,33 +1354,43 @@ let rec output_statement out stat =
 			expr_liste);
 		output_string out ");\n"
 	| ERROR ch ->
+		indent ();
 		Printf.fprintf out "\t\t error %s;\n" ch
 	| IF_STAT (exp,statT,statE) ->
+		indent ();
 		output_string out "\t\t if ";
 		output_expr out exp;
 		output_string out "\n";
+		indent ();
 		output_string out "\t\t then \n";
-		output_statement out statT;
+		output_statement_tab out statT (tab + 1);
 		if statE <> NOP then begin
+			indent ();
 			output_string out "\t\t else \n";
-			output_statement out statE
+			output_statement_tab out statE (tab + 1)
 		end;
+		indent ();
 		output_string out "\t\t endif;\n"
 	| SWITCH_STAT (exp,stat_liste,stat) ->
+		indent ();
 		output_string out "\t\t switch (";
 		output_expr out exp;
 		output_string out ") {\n";
 		List.iter (fun (v,s)->
+			indent ();
 			output_string out "\t\t\t case";
 			output_expr out v;
 			output_string out " : \n\t\t";
-			output_statement out s) (List.rev stat_liste);
+			output_statement_tab out s (tab + 1)) (List.rev stat_liste) ;
+		indent ();
 		output_string out "\t\t\t default : \n\t\t";
-		output_statement out stat;
+		output_statement_tab out stat (tab + 1);
+		indent ();
 		output_string out "\t\t }; \n"
 	| LINE (file, line, s) ->
-		output_statement out s
+		output_statement_tab out s tab
 	| LOCAL (v, o, t, i) ->
+		indent ();
 		Printf.fprintf out "\t\tlet %s" o;
 		if t <> NO_TYPE && t <> ANY_TYPE
 		then fprintf out ": %a" output_type_expr t;
@@ -1382,6 +1398,7 @@ let rec output_statement out stat =
 		then fprintf out " = %a" output_expr i;
 		fprintf out ";\n"
 	| FOR(v, _, t, l, u, b) ->
+		indent ();
 		Printf.fprintf out "\t\tfor %s: " v;
 		output_type_expr out t;
 		output_string out " in ";
@@ -1389,8 +1406,15 @@ let rec output_statement out stat =
 		output_string out "..";
 		output_const out u;
 		output_string out " do\n";
-		output_statement out b;
+		output_statement_tab out b (tab + 1);
+		indent ();
 		output_string out "\t\tenddo;\n"
+
+
+(** Print a statement
+	@param out	Channel to output to.
+	@param stat	Statement to print.*)
+let rec output_statement out stat = output_statement_tab out stat 0
 
 
 (** Print a statement
