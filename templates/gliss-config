@@ -9,10 +9,10 @@ function syntax {
 while test "$1" != ""; do
 	case "$1" in
 		--cflags)
-			echo "-I$(INCLUDE_PATH)"
+			echo "-I'$(INCLUDE_PATH)'"
 			;;
         --libs)
-        	echo "-L$(SOURCE_PATH) -l$(proc) $(foreach modules) $(LIBADD)$(end)"
+        	echo "-L'$(SOURCE_PATH)' -l$(proc) $(foreach modules) $(LIBADD)$(end)"
 			;;
         --help|-h)
         		syntax
