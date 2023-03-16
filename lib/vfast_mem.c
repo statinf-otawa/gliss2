@@ -484,6 +484,9 @@ void gliss_mem_read(gliss_memory_t *memory, gliss_address_t address, void *buffe
     assert(size > 0);
 	int i;
     uint32_t      offset = FMOD(address, MEM_PAGE_SIZE);
+    #ifdef BYTES_PER_ADDRESS
+        offset *= BYTES_PER_ADDRESS;
+    #endif
     uint32_t      sz     = MEM_PAGE_SIZE - offset;
     memory_64_t*  mem    = (memory_64_t *) memory;
     page_entry_t* pte    = mem_get_page(mem, address);
@@ -554,6 +557,9 @@ uint8_t gliss_mem_read8(gliss_memory_t *mem, gliss_address_t address)
 {
     page_entry_t* pte    = mem_get_page(mem, address);
     gliss_address_t offset = FMOD(address, MEM_PAGE_SIZE);
+    #ifdef BYTES_PER_ADDRESS
+        offset *= BYTES_PER_ADDRESS;
+    #endif
     uint8_t r;
 
 #   if HOST_ENDIANNESS != TARGET_ENDIANNESS
@@ -580,6 +586,9 @@ uint16_t gliss_mem_read16(gliss_memory_t *mem, gliss_address_t address) {
 
 	/* get page */
     gliss_address_t offset = FMOD(address, MEM_PAGE_SIZE);
+    #ifdef BYTES_PER_ADDRESS
+        offset *= BYTES_PER_ADDRESS;
+    #endif
     page_entry_t*   pte    = mem_get_page(mem, address);
     uint16_t r;
 
@@ -620,6 +629,9 @@ uint32_t gliss_mem_read32(gliss_memory_t *mem, gliss_address_t address)
 
 	/* get page */
     gliss_address_t offset = FMOD(address, MEM_PAGE_SIZE);
+    #ifdef BYTES_PER_ADDRESS
+        offset *= BYTES_PER_ADDRESS;
+    #endif
     page_entry_t* pte    = mem_get_page(mem, address);
     uint32_t r;
 
@@ -662,6 +674,9 @@ uint64_t gliss_mem_read64(gliss_memory_t *mem, gliss_address_t address) {
 	/* get page */
     page_entry_t* pte    = mem_get_page(mem, address);
     gliss_address_t offset = FMOD(address, MEM_PAGE_SIZE);
+    #ifdef BYTES_PER_ADDRESS
+        offset *= BYTES_PER_ADDRESS;
+    #endif
     uint64_t r;
 
 #   if HOST_ENDIANNESS != TARGET_ENDIANNESS
