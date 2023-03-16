@@ -337,9 +337,9 @@ int main(int argc, char **argv) {
 
 			/* display the address */
 			if((prev_addr & 0xffff0000) == (adr_start & 0xffff0000))
-				printf("    %04x:\t", adr_start & 0x0000ffff);
+				printf("    %04x   ", adr_start & 0x0000ffff);
 			else
-				printf("%08x:\t", adr_start);
+				printf("%08x   ", adr_start);
 			prev_addr = adr_start;
 
 			/* display the instruction bytes */
@@ -351,8 +351,8 @@ int main(int argc, char **argv) {
 					fputs("  ", stdout);
 			}
 
-			/* displat the instruction */
-			printf("\t%s\n", buff);
+			/* display the instruction */
+			printf("   %s\n", buff);
 			/* inst size is given in bit, we want it in byte */
 			adr_start += size;
 		}
