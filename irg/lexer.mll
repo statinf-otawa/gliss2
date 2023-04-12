@@ -303,7 +303,7 @@ rule main = parse
 and eof_comment = parse
 	'\n'	{ new_line lexbuf; main lexbuf }
 |	_		{ eof_comment lexbuf }
-|	eof		{ eof_comment lexbuf }
+|	eof		{ main lexbuf }
 
 (* comment *)
 and comment = parse

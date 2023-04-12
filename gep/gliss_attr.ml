@@ -21,6 +21,8 @@
 
 exception CommandError of string
 
+open Printf
+
 (* library path *)
 let paths = [
 	Config.install_dir ^ "/lib/gliss/lib";
@@ -242,6 +244,10 @@ let process inst out info stateless =
 
 
 let _ =
+	let say (msg: string) =
+		output_string stderr msg;
+		flush stderr in
+
 	try
 		App.run
 			options
@@ -249,7 +255,11 @@ let _ =
 			(fun info ->
 
 				(* download the extensions *)
-				List.iter IrgUtil.load_with_error_support !extends;
+				List.iter (fun e ->
+					if !App.verbose then say (sprintf "Loading %s\n" e);
+					IrgUtil.load_with_error_support e)
+					!extends;
+				if !App.verbose then say "Generating the instructions.\n";
 				Iter.clear_insts ();
 				ignore (Iter.get_insts ());
 
